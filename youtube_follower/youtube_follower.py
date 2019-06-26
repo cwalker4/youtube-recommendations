@@ -13,7 +13,7 @@ import numpy as np
 from bs4 import BeautifulSoup
 import youtube_dl
 
-import utils
+from youtube_follower import utils
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--query', required=True, help='The start search query')
@@ -56,12 +56,12 @@ class YoutubeFollower():
                 if self.verbose:
                     print('Existing video info found in {}; loading'.format(video_info_path))
                 with open(video_info_path) as f:
-                    self._video_info = json.load(f)
+                    self.video_info = json.load(f)
             else:
-                self._video_info = {}
+                self.video_info = {}
         else:
             os.makedirs(self.outdir)
-            self._video_info = {}
+            self.video_info = {}
 
     def save_results(self, crawl_outdir):
         """
@@ -76,7 +76,7 @@ class YoutubeFollower():
         os.makedirs(crawl_outdir)
 
         with open(os.path.join(self.outdir, 'video_info.json'), 'w') as f:
-            json.dump(yf._video_info, f)
+            json.dump(yf.video_info, f)
 
         with open(os.path.join(crawl_outdir, 'search_info.json'), 'w') as f:
             json.dump(yf.search_info, f)
@@ -116,7 +116,7 @@ class YoutubeFollower():
         if self.verbose:
             print("Getting all metadata...")
         video_ids = set(self.search_info.keys())
-        video_ids = list(video_ids.difference(set(self._video_info.keys())))
+        video_ids = list(video_ids.difference(set(self.video_info.keys())))
         metadata = utils.get_metadata(video_ids)
 
         for video_id in video_ids:
@@ -125,7 +125,7 @@ class YoutubeFollower():
 
             video_data = metadata.get(video_id)
 
-            self._video_info[video_id] = {'views': video_data['views'],
+            self.video_info[video_id] = {'views': video_data['views'],
                                          'likes': video_data['likes'],
                                          'dislikes': video_data['dislikes'],
                                          'description': video_data['description'],
@@ -133,17 +133,15 @@ class YoutubeFollower():
                                          'postdate': video_data['date'],
                                          'n_comments': video_data['n_comments'],
                                          'channel': video_data['channel'],
-                                         'title': video_data['title'],
-                                         'has_captions': video_data['has_captions']}
+                                         'title': video_data['title']}
             # Get text data if wanted
             if self.text:
                 comments = utils.get_comments(video_id, max_results=20)
-                self._video_info[video_id]['comments'] = comments
-                if video_data['has_captions']:
-                    self.get_subtitles(video_id)
+                self.video_info[video_id]['comments'] = comments
+                self.get_subtitles(video_id)
 
 
-    def _parse_soup(self, soup):
+    def parse_soup(self, soup):
         """
         Helper function for get_recommendations.
 
@@ -208,7 +206,7 @@ class YoutubeFollower():
             except:
                 time.sleep(1)
         soup = BeautifulSoup(html, "lxml")
-        recs = self._parse_soup(soup)
+        recs = self.parse_soup(soup)
 
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random

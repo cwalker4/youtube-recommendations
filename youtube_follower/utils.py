@@ -63,7 +63,7 @@ def get_metadata_batch(video_ids):
 
     video_response = youtube.videos().list(
         id=video_ids,
-        part='snippet, contentDetails, statistics'
+        part='snippet, statistics'
         ).execute()
 
     result = {}
@@ -80,8 +80,6 @@ def get_metadata_batch(video_ids):
                             'description': snippet.get('description', -1),
                             'category_id': snippet.get('categoryId', -1),
                             'channel': snippet.get('channelTitle', -1),
-                            'has_captions': contentDetails.get('caption', -1),
-                            'duration': contentDetails.get('duration', -1),
                             'likes': statistics.get('likeCount', -1),
                             'dislikes': statistics.get('dislikeCount', -1),
                             'views': statistics.get('viewCount', -1),
