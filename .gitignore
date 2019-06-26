@@ -107,3 +107,6 @@ venv.bak/
 credentials/
 .Rproj.user
 .Rhistory
+
+# scrape results
+data/scrape_results*
