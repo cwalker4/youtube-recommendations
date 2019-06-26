@@ -106,3 +106,4 @@ venv.bak/
 # credentials
 credentials/
 .Rproj.user
+.Rhistory
