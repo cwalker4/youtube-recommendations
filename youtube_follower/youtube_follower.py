@@ -76,10 +76,10 @@ class YoutubeFollower():
         os.makedirs(crawl_outdir)
 
         with open(os.path.join(self.outdir, 'video_info.json'), 'w') as f:
-            json.dump(yf.video_info, f)
+            json.dump(self.video_info, f)
 
         with open(os.path.join(crawl_outdir, 'search_info.json'), 'w') as f:
-            json.dump(yf.search_info, f)
+            json.dump(self.search_info, f)
 
         with open(os.path.join(crawl_outdir, 'params.json'), 'w') as f:
             json.dump(params_dict, f)
