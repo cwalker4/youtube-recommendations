@@ -172,7 +172,7 @@ class YoutubeFollower():
                         recs.append(rec_id)
                     except IndexError:
                         print('There are not enough recommendations')
-                    except AttributeError:
+                    except (AttributeError, TypeError) as e:
                         print('WARNING Malformed content, could not get recommendation')
 
         # clean up the video ids
