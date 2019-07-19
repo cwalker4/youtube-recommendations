@@ -8,10 +8,10 @@ import os
 from youtube_follower import youtube_follower
 
 def get_quota_cost(search_params):
-    # maximum number of unique videos visited (= number of vertices in a 
+    # maximum number of unique videos visited (= number of vertices in a
     # n_splits-regular tree with depth search_params['depth'])
     max_vids = 0
-    for i in range(search_params['depth']):
+    for i in range(search_params['depth'] + 1):
         max_vids += search_params['n_splits'] ** i
 
     batch_size = 45  # number of videos per query batch
@@ -33,7 +33,7 @@ if __name__ == "__main__":
         if tree_dir in os.listdir('data/scrape_results_redo'):
         	continue
         query, root_id = tree_dir.split('_', maxsplit=1)
-        
+
         print("Re-running tree with query {} and root {}".format(query, root_id))
         with open(os.path.join(tree_path, 'params.json')) as f:
             search_params = json.load(f)
@@ -42,7 +42,7 @@ if __name__ == "__main__":
         if quota_used >= 10000:
             print("Reached daily quota limit; halting search")
             break
-        
+
         yf = youtube_follower.YoutubeFollower(
                 query=query,
                 n_splits=search_params['n_splits'],
