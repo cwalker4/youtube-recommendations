@@ -115,6 +115,7 @@ class YoutubeFollower():
         """
         if self.verbose:
             print("Getting all metadata...")
+        # only get metadata for videos we haven't seen before
         video_ids = set(self.search_info.keys())
         video_ids = list(video_ids.difference(set(self.video_info.keys())))
         metadata = utils.get_metadata(video_ids)
