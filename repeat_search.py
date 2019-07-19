@@ -49,14 +49,11 @@ if __name__ == "__main__":
         	continue
         query, root_id = tree_dir.split('_', maxsplit=1)
 
-<<<<<<< HEAD
-=======
         # check if root is still available
         if not check_root(root_id):
             print("Could not retrieve root: {}".format(root_id))
             continue
 
->>>>>>> 7184fb350263761c9b3133e1145c48d67de79f29
         print("Re-running tree with query {} and root {}".format(query, root_id))
         with open(os.path.join(tree_path, 'params.json')) as f:
             search_params = json.load(f)
