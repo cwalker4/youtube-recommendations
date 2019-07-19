@@ -32,7 +32,7 @@ def check_root(video_id):
         boolean for whether video is available
     """
     root_query = youtube.videos().list(id=video_id, part='id').execute()
-    return tst.get('items')
+    return root_query.get('items')
 
 
 if __name__ == "__main__":
