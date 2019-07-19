@@ -12,7 +12,7 @@ def get_quota_cost(search_params):
     # maximum number of unique videos visited (= number of vertices in a 
     # n_splits-regular tree with depth search_params['depth'])
     max_vids = 0
-    for i in range(search_params['depth']):
+    for i in range(search_params['depth'] + 1):
         max_vids += search_params['n_splits'] ** i
 
     batch_size = 45  # number of videos per query batch
