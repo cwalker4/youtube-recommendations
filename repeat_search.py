@@ -6,6 +6,7 @@ import sys
 import os
 
 from youtube_follower import youtube_follower
+from youtube_follower.utils import youtube
 
 def get_quota_cost(search_params):
     # maximum number of unique videos visited (= number of vertices in a 
@@ -20,6 +21,20 @@ def get_quota_cost(search_params):
     quota_cost = n_queries * cost_per_query
     return quota_cost
 
+def check_root(video_id):
+    """
+    Check whether root video is still available
+
+    INPUT:
+        video_id: (str) video id
+
+    OUTPUT:
+        boolean for whether video is available
+    """
+    root_query = youtube.videos().list(id=video_id, part='id').execute()
+    return tst.get('items')
+
+
 if __name__ == "__main__":
     quota_used = 0
     results_dir = 'data/scrape_results_old'
@@ -33,6 +48,11 @@ if __name__ == "__main__":
         if tree_dir in os.listdir('data/scrape_results_redo'):
         	continue
         query, root_id = tree_dir.split('_', maxsplit=1)
+
+        # check if root is still available
+        if not check_root(root_id):
+            print("Could not retrieve root: {}".format(root_id))
+            continue
         
         print("Re-running tree with query {} and root {}".format(query, root_id))
         with open(os.path.join(tree_path, 'params.json')) as f:
