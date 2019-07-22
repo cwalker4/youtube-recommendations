@@ -59,9 +59,9 @@ if __name__ == "__main__":
             search_params = json.load(f)
         quota_used += get_quota_cost(search_params)
 
-        if quota_used >= 10000:
-            print("Reached daily quota limit; halting search")
-            break
+        #if quota_used >= 10000:
+        #    print("Reached daily quota limit; halting search")
+        #    break
 
         yf = youtube_follower_selenium.YoutubeFollower(
                 query=query,
