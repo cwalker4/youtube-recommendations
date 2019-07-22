@@ -1,0 +1,588 @@
+---
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    number_sections: no
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = FALSE, 
+                      warning = FALSE,
+                      message = FALSE,
+                      cache.lazy = FALSE,
+                      # force output to LaTeX (which forces the
+                      # imposition of fig.pos) and proper figure alignment
+                      fig.align = 'center',
+                      fig.pos = 'H')
+
+library(dplyr)
+library(here)
+library(tidyr)
+library(stringr)
+library(forcats)
+library(broom)
+library(readr)
+library(jsonlite)
+
+library(kableExtra)
+
+library(gridExtra)
+
+library(ggplot2)
+extrafont::loadfonts(quiet = TRUE)
+library(GGally)
+library(hrbrthemes)
+theme_set(theme_ipsum())
+library(atheylab.utils)
+
+knitr::knit_hooks$set(inline = function(x) {
+  atheylab.utils::pretty_print_inline(x, decimals = 2)
+})
+
+library(texreg)
+
+```
+
+---
+title: "Project Analysis"
+---
+
+This notebook runs the analysis associated with the course project for MS&E 234. Very basic preliminary poking at the data collected by the scraper. 
+
+```{r}
+################################################################################
+# data import + tidying
+################################################################################
+
+indir <- 'data/derived_data'
+
+# raw video info
+read_csv(here::here(indir, 'analysis_redo/video_info.csv'), na = c("", -1)) %>%
+  mutate_at(vars(category, dislikes, likes, views, n_comments), as.integer) -> video_info
+
+# category id <-> category name crosswalk
+category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
+
+# search info dataframe
+read_csv(here::here(indir, 'analysis_redo/search_info.csv'), na = c("", -1)) %>%
+  select(-recommendations) %>%
+  mutate(search = stringr::str_replace_all(search, ' ', '_')) -> search_info
+
+# add a variable for percent of likes
+video_info %>%
+  mutate(p_like = likes / (likes + dislikes)) -> video_info
+
+# video degrees
+degrees <- read_csv(here::here(indir, 'analysis_redo/vertex_degrees.csv'))
+
+# pageranks
+prs <- read_csv(here::here(indir, 'analysis_redo/pageranks.csv'))
+  
+```
+
+Basic summaries across all our variables:
+
+```{r}
+search_info %>%
+  left_join(video_info, by = 'video_id') -> search_w_info
+
+search_w_info %>%
+  rename_all(list(~ stringr::str_replace(., "_", "."))) %>%
+  select(views, likes, dislikes, n.comments) %>%
+  summarise_all(list(min = ~min(., na.rm = TRUE),
+                     median = ~median(., na.rm = TRUE),
+                     max = ~max(., na.rm = TRUE),
+                     mean = ~mean(., na.rm = TRUE),
+                     sd = ~sd(., na.rm = TRUE))) -> summary_stats
+
+summary_stats %>%
+  gather(stat, val) %>%
+  tidyr::separate(stat, into = c("var", "stat"), sep = "_", extra = "merge") %>%
+  spread(stat, val) %>%
+  select(Variable = var, mean, median, min, max, sd) %>%
+  kable(format = "latex",
+        caption = "Summaries",
+        booktabs = TRUE,
+        digits = 2) %>%
+  kable_styling()
+
+```
+
+
+Now asking the question: did any features of our videos change (on average) as we traversed the trees?
+
+```{r}
+# get average statistics by search depth
+search_w_info %>%
+  group_by(depth) %>%
+  summarise_at(vars(likes, n_comments, views, p_like),
+               function(x) mean(x, na.rm = TRUE)) %>%
+  gather(stat, mean, -depth) -> mean_by_depth
+
+search_w_info %>%
+  group_by(depth) %>%
+  summarise_at(vars(likes, n_comments, views, p_like),
+               function(x) sd(x, na.rm = TRUE) / sqrt(length(x))) %>%
+  gather(stat, se, -depth) -> se_by_depth
+
+search_w_info %>%
+  group_by(depth) %>%
+  summarise_at(vars(likes, n_comments, views, p_like),
+               function(x) sd(x, na.rm = TRUE)) %>%
+  gather(stat, sd, -depth) -> sd_by_depth
+
+mean_by_depth %>%
+  left_join(se_by_depth, by = c('depth', 'stat')) %>%
+  left_join(sd_by_depth, by = c('depth', 'stat')) -> stats_by_depth
+
+stats_by_depth %>%
+  ggplot(aes(depth, mean)) +
+  geom_line() +
+  facet_wrap(~ stat, scales="free_y")
+
+```
+
+This gives us an overview. For the sake of less ugly plots let's make these individually
+
+```{r}
+stats_by_depth %>%
+  filter(stat == "views") %>%
+  ggplot(aes(depth, mean)) +
+  geom_line() +
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), alpha=0.1) +
+  ylab("Average Views") +
+  xlab("BFS Depth") +
+  scale_x_continuous(breaks=1:8)
+
+```
+
+
+```{r}
+stats_by_depth %>%
+  filter(stat == "p_like") %>%
+  mutate(mean = 1 - mean,
+         stat = "p_dislike") %>%
+  select(-se) -> dislikes
+
+stats_by_depth %>%
+  bind_rows(dislikes) %>%
+  filter(stat %in% c("p_like", "p_dislike")) %>%
+  mutate(stat = ifelse(stat == "p_like", "Likes", "Dislikes")) %>%
+  ggplot(aes(depth, mean, fill=stat)) +
+  geom_area() +
+  ylab("Fraction of Likes/Dislikes") +
+  xlab("BFS Depth") + 
+  scale_fill_manual(name = "", values = c("red", "darkgreen")) +
+  scale_x_continuous(breaks=1:8)
+
+```
+
+What happens to our categories as we go _deeperrr_?
+
+```{r}
+search_w_info %>%
+  left_join(category_crosswalk, by = c('category' = 'category_id')) %>%
+  mutate_at("category_name", as.factor) %>%
+  group_by(depth, category_name) %>%
+  summarise(n = n()) %>%
+  mutate(category_freq = n / sum(n)) -> category_freq
+
+category_freq %>%
+  group_by(depth) %>%
+  summarise(sum = sum(category_freq)) -> tst
+
+category_freq %>%
+  ggplot(aes(depth, category_freq, fill = category_name)) + 
+  geom_col() +
+  xlab("BFS Depth") + 
+  ylab("Frequency")
+
+```
+
+
+
+```{r}
+# post date by depth
+search_w_info %>%
+  group_by(search) %>%
+  mutate(root_date = postdate[which(depth == 0)]) %>%
+  mutate(time_diff = difftime(postdate, root_date, units="days")) %>%
+  ungroup() %>%
+  select(depth, search, time_diff) -> time_diffs
+
+time_diffs %>%
+  group_by(depth) %>%
+  summarize(mean = mean(time_diff, na.rm = TRUE),
+           se = sd(time_diff, na.rm = TRUE) / sqrt(length(time_diff))) %>%
+  ggplot(aes(depth, mean)) +
+  geom_line() +
+  geom_ribbon(aes(ymin=mean-se, ymax=mean+se), alpha=0.1) +
+  ylab("Time Difference (days)")
+
+```
+
+```{r}
+search_w_info %>%
+  mutate(video_age = as.numeric(difftime(as.Date("2019-03-13", format="%Y-%m-%d"), postdate, units="days"))) %>%
+  mutate(age_bin = cut(video_age, seq(0, 4500, 50), labels=FALSE)) %>%
+  mutate(age_bin = age_bin * 50) %>%
+  group_by(age_bin) %>%
+  summarise(mean = mean(views, na.rm = TRUE),
+            se = sd(views, na.rm = TRUE) / sqrt(length(views))) %>%
+  ungroup() %>%
+  ggplot(aes(age_bin, mean)) +
+  geom_point() +
+  ylab("Views") + 
+  xlab("Video Age (days)") +
+  xlim(c(0, 2500))
+
+
+```
+
+
+
+# Graphy things
+
+```{r}
+# degree distribution
+n_videos <- nrow(degrees)
+
+degrees %>%
+  group_by(in_deg) %>%
+  summarise(p = n() / n_videos) %>%
+  ggplot(aes(in_deg, p)) + 
+  geom_point() + 
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) + 
+  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  ylab("P(in-degree)") + 
+  xlab("in-degree") 
+  
+
+
+```
+
+Look at characteristics by in-degree. First: what are the videos with the highest in-degree?
+
+```{r}
+degrees %>%
+  select(video_id, in_deg) %>%
+  top_n(10, in_deg) %>%
+  arrange(-in_deg) %>%
+  left_join(video_info %>% select(video_id, title, channel), by = "video_id") %>%
+  kable(format = "latex",
+        caption = "Top Videos by In-Degree",
+        col.names = c("Video", "In-Degree", "Title", "Channel"),
+        booktabs = TRUE,
+        digits = 2) %>%
+  kable_styling(latex_options = c("scale_down"))
+  
+```
+
+How do things vary with in-degree?
+
+```{r}
+degrees %>%
+  left_join(video_info, by = "video_id") %>%
+  select(-category, -channel, -description, -postdate, -title, -out_deg) %>%
+  gather(stat, val, -c("video_id", "in_deg")) %>%
+  filter(!is.na(val)) -> deg_stats_long
+  
+deg_stats_long %>%
+  group_by(in_deg, stat) %>%
+  dplyr::summarize(mean = mean(val, na.rm = TRUE),
+            se = sd(val, na.rm = TRUE) / sqrt(length(val)),
+            count = n()) -> deg_stats
+
+```
+
+```{r}
+deg_stats %>%
+  filter(stat %in% c("views", "p_like")) %>%
+  mutate(stat = case_when(stat == "views" ~ "Views",
+                          stat == "p_like" ~ "Like Fraction")) %>%
+  ggplot(aes(in_deg, mean, size = count)) +
+  geom_point(alpha = 0.5) + 
+  facet_wrap(~stat, nrow=2, scales = "free_y") +
+  xlim(c(0, 40)) + 
+  ylab("Views") +
+  xlab("In Degree")
+```
+
+How do things vary with PageRanks?
+
+```{r}
+deg_stats_long %>%
+  filter(stat %in% c("views", "p_like")) %>%
+  left_join(prs, by = 'video_id') %>%
+  mutate(pagerank = cut(pagerank, seq(0, 0.005, 0.0005), labels = FALSE) * 0.0005) %>%
+  group_by(pagerank, stat) %>%
+  summarise(val = mean(val, na.rm = TRUE),
+            n = n()) %>%
+  ggplot(aes(pagerank, val, size = n)) +
+  geom_point(alpha=0.7) + 
+  facet_wrap(~stat, nrow=2, scales = "free_y") +
+  xlab("PageRank") + 
+  ylab("Mean")
+
+```
+
+# Polarization
+
+The motivation for this project was to get a sese of the polarization of the content that the Youtube recommendation engine points towards. I've scraped a few websites and compiled a list of media outlets / political sources and their political leaning: left, center, or right. I want to make a figure / do some analysis that captures the probability you land on a left- or right-leaning video conditional on your starting query -- I seeded my scrapes with the names of left- or right-leaning politicians. There are two ways I might condition:
+
+1. P(landing on bias _b_ at level _d_ | started with _b_ leaning query)
+2. P(landing on bias _b_ at level _d_ | started by _b_ leaning video)
+
+```{r}
+# import the channel-leaning information
+channel_leanings <- readr::read_csv(here::here(indir, 'analysis_redo/channel_classification.csv'))
+
+# make a query <-> party affiliation crosswalk
+dems <- c("jim clyburn", "kagan", "aoc", "susan rice", "john podesta", "sotomayor", "krysten sinema",
+          "john lewis", "pelosi", "ruth bader ginsburg", "gavin newsom", "loretta lynch", "beto orourke",
+          "schumer", "democrats", "maxine waters", "john kelly", "david axelrod", "john kerry", "eric holder",
+          "dick durbin", "rahm emanuel", "biden", "obama", "clinton", "bernie", "cory booker", "tim geithner",
+          "kamala harris", "gillibrand", "dan pfeiffer")
+
+tibble(query = dems) %>%
+  mutate(query_leaning = "L") -> l_queries
+
+reps <- c("trump", "sarah huckabee sanders", "mike pompeo", "william barr", "wilbur ross", "pence", "ted cruz",
+          "mick mulvaney", "rick perry", "scott pruitt", "mcconnell", "rex tillerson", "ben carson", "kavanaugh",
+          "john cornyn", "paul ryan", "susan collins", "james mattis", "lindsay graham", "kevin mccarthy",
+          "steve mnuchin", "betsy devos", "jeff sessions", "kushner")
+
+tibble(query = reps) %>%
+  mutate(query_leaning = 'R') -> r_queries
+
+query_classifications <- bind_rows(l_queries, r_queries)
+
+# join the query and channel classifications into the saerch info dataframe
+search_w_info %>%
+  mutate_at("channel", tolower) %>%
+  left_join(channel_leanings, by = 'channel') %>%
+  left_join(query_classifications, by = 'query') %>%
+  select(search, query, video_id, depth, channel, leaning, query_leaning) -> search_leanings
+
+```
+
+```{r}
+# print out the table of queries and classifications
+query_classifications %>%
+  arrange(query) %>%
+  kable(format = "latex",
+        caption = "Queries and Leanings",
+        booktabs = TRUE,
+        digits = 2,
+        col.names = c("Query", "Leaning"),
+        longtable = TRUE) %>%
+  kable_styling()
+```
+
+
+First look at the counts of R vs L vs C leaning videos. Looks like we have mostly left leaning videos.
+
+```{r}
+search_leanings %>%
+  count(leaning) %>%
+  mutate(freq = n / sum(n)) -> leaning_freqs
+
+search_leanings %>%
+  distinct(video_id, leaning) %>%
+  count(leaning) %>%
+  mutate(frac_videos = n / sum(n)) %>%
+  rename(n_videos = n) -> video_leaning_counts
+
+search_leanings %>%
+  distinct(channel, leaning) %>%
+  count(leaning) %>%
+  mutate(frac_channels = n / sum(n)) %>%
+  rename(n_channels = n) -> channel_leaning_counts
+
+channel_leaning_counts %>%
+  left_join(video_leaning_counts, by = 'leaning') %>%
+  kable(format = "latex",
+        caption = "Summaries",
+        booktabs = TRUE,
+        digits = 2,
+        col.names = c("Leaning", "No. Channels", "Frac. Channels", "No. Videos", "Frac. Videos")) %>%
+  kable_styling()
+
+```
+
+What are the frequencies for just the base videos?
+
+```{r}
+search_leanings %>%
+  filter(depth == 0) %>%
+  count(leaning) %>%
+  mutate(freq = n / sum(n)) -> base_leanings
+
+base_leanings %>%
+  kable(format = "latex",
+        caption = "Summaries",
+        booktabs = TRUE,
+        digits = 2,
+        col.names = c("Leaning", "Count", "Proportion")) %>%
+  kable_styling()
+```
+
+What sorts of queries return the most R vs L leaning videos?
+
+```{r}
+search_leanings %>%
+  filter(!is.na(leaning)) %>%
+  group_by(query, leaning) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) -> query_tree_leanings
+
+query_tree_leanings %>%
+  filter(leaning == 'L') %>%
+  select(query, freq) %>%
+  top_n(10) %>%
+  arrange(-freq)
+
+query_tree_leanings %>%
+  filter(leaning == 'R') %>%
+  select(query, freq) %>%
+  top_n(10) %>%
+  arrange(-freq)
+
+```
+
+
+Plot political leaning of channels by depth:
+
+```{r}
+search_leanings %>%
+  filter(!is.na(leaning)) %>%
+  group_by(depth, leaning) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) -> leaning_by_depth
+
+leaning_by_depth %>%
+  mutate(leaning = case_when(leaning == "C" ~ "Center",
+                             leaning == "L" ~ "Left",
+                             leaning == "R" ~ "Right")) %>%
+  ggplot() + 
+  geom_col(aes(depth, freq, fill = leaning)) + 
+  scale_fill_manual(values = c("purple", "blue", "red")) +
+  ylab("Frequency") + 
+  xlab("BFS Depth")
+
+```
+
+Breaking this up by leaning of the query:
+
+```{r}
+search_leanings %>%
+  filter(!is.na(leaning), !is.na(query_leaning)) %>%
+  group_by(query_leaning, depth, leaning) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(query_leaning = ifelse(query_leaning == 'L', 'Left-Leaning Query', 'Right-Leaning Query'),
+         leaning = case_when(leaning == "C" ~ "Center",
+                             leaning == "L" ~ "Left",
+                             leaning == "R" ~ "Right")) %>%
+  ggplot() + 
+  geom_col(aes(depth, freq, fill = leaning)) + 
+  scale_fill_manual(values = c("purple", "blue", "red")) +
+  facet_wrap(~ query_leaning) +
+  ylab("Frequency") + 
+  xlab("BFS Depth")
+
+```
+
+Not a lot of action, although this may be a result of queries not containing a ton of information about the polarization of the initial video. Let's look instead at how political bias evolves by depth, broken up by the leaning of the seed (root) video.
+
+```{r}
+search_leanings %>%
+  group_by(search) %>%
+  mutate(seed_leaning = leaning[which.min(depth)]) %>%
+  ungroup() %>%
+  filter(seed_leaning %in% c('L', 'R'),
+         !is.na(leaning)) %>%
+  group_by(seed_leaning, depth, leaning) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) %>%
+  ungroup() %>%
+  mutate(seed_leaning = ifelse(seed_leaning == 'L', 'Left-Leaning Seed', 'Right-Leaning Seed'),
+       leaning = case_when(leaning == "C" ~ "Center",
+                           leaning == "L" ~ "Left",
+                           leaning == "R" ~ "Right")) %>%
+  ggplot() + 
+  geom_col(aes(depth, freq, fill = leaning)) + 
+  scale_fill_manual(values = c("purple", "blue", "red")) +
+  facet_wrap(~ seed_leaning) +
+  ylab("Frequency") + 
+  xlab("BFS Depth")
+
+```
+
+
+Isolation index? Count the relative frequency of different leanings (a root video is defined as "R" if it is a right-leaning query) arriving at a  particular video. Then calculate the isolation index a la Getnzkow & Alcott?
+
+# Isolation Index
+
+```{r}
+# get the conservative and liberal counts for each channel. Consider each tree as a search
+# by a single user. The user's political leaning is defined as the leaning of the very first (root) video
+# in the tree.
+search_leanings %>%
+  group_by(search) %>%
+  mutate(seed_leaning = leaning[which.min(depth)]) %>%
+  ungroup() %>%
+  filter(seed_leaning %in% c('L', 'R')) %>%
+  mutate(seed_leaning = factor(seed_leaning, levels=c('L', 'R'))) %>%
+  count(channel, seed_leaning, .drop = FALSE) -> leaning_visit_counts
+
+# get the conservative and liberal shares for each channel
+leaning_visit_counts %>%
+  tidyr::spread(seed_leaning, n) %>%
+  rename(n_l = L, n_r = R) %>%
+  mutate(p_l = (n_l) / (n_l + n_r),
+         p_r = (n_r) / (n_l + n_r)) -> leaning_info
+
+# get the total number of liberal/conservative seed videos.
+search_leanings %>%
+  group_by(search) %>%
+  mutate(seed_leaning = leaning[which.min(depth)]) %>%
+  ungroup() %>%
+  count(seed_leaning) -> total_visits_by_leaning
+
+n_cons_visits <- total_visits_by_leaning %>% filter(seed_leaning == 'R') %>% pull(n)
+n_lib_visits <- total_visits_by_leaning %>% filter(seed_leaning == 'L') %>% pull(n)
+
+leaning_info %>%
+  summarise(isolation = sum((p_r * n_r) / n_cons_visits, na.rm = TRUE)) %>%
+  pull(isolation) -> cons_exposure
+
+leaning_info %>%
+  summarise(isolation = sum((p_l * n_r)/n_lib_visits, na.rm = TRUE)) %>%
+  pull(isolation) -> lib_exposure
+
+isolation_index = cons_exposure - lib_exposure
+
+```
+
+
+```{r}
+channel_leanings %>%
+  arrange(channel) %>%
+  kable(format = "latex",
+        caption = "Channels and Classifications",
+        booktabs = TRUE,
+        col.names = c("Channel", "Bias"),
+        digits = 2,
+        longtable = TRUE) %>%
+  kable_styling()
+```
+
+
+
+
+

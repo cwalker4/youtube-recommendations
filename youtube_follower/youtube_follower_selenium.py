@@ -67,6 +67,7 @@ class YoutubeFollower():
         self.outdir = outdir
         self.const_depth = const_depth
         self.sample = sample
+        self.browser = webdriver.Firefox()
 
         # create the out directory if it doesn't already exist. Further, pull in 
         # video info from previous crawls to minimize API abuse. Initialize from
@@ -162,11 +163,11 @@ class YoutubeFollower():
                 self.get_subtitles(video_id)
 
 
-    def parse_page(self, browser):
+    def parse_page(self):
         """
         Helper for get_recommendations
         """
-        rec_elems = browser.find_elements_by_xpath("//a[@class='yt-simple-endpoint style-scope ytd-compact-video-renderer']")
+        rec_elems = self.browser.find_elements_by_xpath("//a[@class='yt-simple-endpoint style-scope ytd-compact-video-renderer']")
         recs = []
         for i in range(self.n_splits):
             video_id = rec_elems[i].get_attribute('href').split('?v=')[1]
@@ -174,13 +175,13 @@ class YoutubeFollower():
         return recs
 
 
-    def skip_ads(self, browser):
-        wait = WebDriverWait(browser, 30)
+    def skip_ads(self):
+        wait = WebDriverWait(self.browser, 30)
         # press play on the video
         wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-play-button ytp-button']"))).click()
         # check whether video is skippable; if so, wait until skip button appears and click it
         try:
-            preskipbutton = browser.find_element_by_xpath("//div[contains(@id, 'preskip-component')]")
+            preskipbutton = self.browser.find_element_by_xpath("//div[contains(@id, 'preskip-component')]")
             skipbutton = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-ad-skip-button ytp-button']")))
             skipbutton.click()
             return
@@ -195,14 +196,13 @@ class YoutubeFollower():
             return
 
 
-    def get_recommendations(self, video_id, depth, browser):
+    def get_recommendations(self, video_id, depth):
         """
         Scrapes the recommendations corresponding to video_id
 
         INPUT:
             video_id: (str)
             depth: (int) depth of search
-            browser: Selenium webdriver
 
         OUTPUT:
             recs: list of recommended video_ids
@@ -217,14 +217,14 @@ class YoutubeFollower():
         url = "http://youtube.com/watch?v={}".format(video_id)
         while True:
             try:
-                browser.get(url)
+                self.browser.get(url)
                 break
             except:
                 time.sleep(1)
 
-        self.skip_ads(browser)
+        self.skip_ads()
         time.sleep(15)  # watch some of the video
-        recs = self.parse_page(browser)
+        recs = self.parse_page()
 
         self.search_info[video_id] = {'recommendations': recs,
                                        'depth': depth}
@@ -233,7 +233,7 @@ class YoutubeFollower():
         return recs
 
 
-    def get_recommendation_tree(self, seed, browser):
+    def get_recommendation_tree(self, seed):
         """
         Builds the recommendation tree via BFS. Calls functions to
         populate video info and search info.
@@ -254,7 +254,7 @@ class YoutubeFollower():
                 inactive_queue = []
                 depth += 1
             current_video = queue.pop(0)
-            recs = self.get_recommendations(current_video, depth, browser)
+            recs = self.get_recommendations(current_video, depth)
             for video_id in recs:
                 if video_id in self.search_info:
                     if self.verbose:
@@ -273,10 +273,8 @@ class YoutubeFollower():
             print('Starting crawl from root video {}'.format(video_id))
             print('Results will be saved to {}'.format(crawl_outdir))
 
-        # Open up a Selenium browser and run through the recommendation tree
-        browser = webdriver.Firefox()
-        self.get_recommendation_tree(seed=video_id, browser=browser)
-        browser.close()  # shut down the browser
+        self.get_recommendation_tree(seed=video_id)
+        self.browser.close()  # shut down the browser
         self.populate_info()
         self.save_results(crawl_outdir)
 
