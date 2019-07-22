@@ -110,3 +110,6 @@ credentials/
 
 # scrape results
 data/scrape_results*
+
+# system stuff
+.DS_store
