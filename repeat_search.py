@@ -5,7 +5,7 @@ import json
 import sys
 import os
 
-from youtube_follower import youtube_follower
+from youtube_follower import youtube_follower_selenium
 from youtube_follower.utils import youtube
 
 def get_quota_cost(search_params):
@@ -32,7 +32,7 @@ def check_root(video_id):
         boolean for whether video is available
     """
     root_query = youtube.videos().list(id=video_id, part='id').execute()
-    return tst.get('items')
+    return root_query.get('items')
 
 
 if __name__ == "__main__":
@@ -45,7 +45,7 @@ if __name__ == "__main__":
         if tree_dir in ['video_info.json', 'captions']:
             continue
         # skip search if already repeated
-        if tree_dir in os.listdir('data/scrape_results_redo'):
+        if tree_dir in os.listdir('data/scrape_results_redo_selenium'):
         	continue
         query, root_id = tree_dir.split('_', maxsplit=1)
 
@@ -67,7 +67,7 @@ if __name__ == "__main__":
                 query=query,
                 n_splits=search_params['n_splits'],
                 depth=search_params['depth'],
-                outdir='data/scrape_results_redo',
+                outdir='data/scrape_results_redo_selenium',
                 verbose=False)
         yf.run(root_id)
 

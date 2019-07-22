@@ -16,7 +16,7 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException
 from selenium.webdriver.support.ui import WebDriverWait
 
-import utils
+from youtube_follower import utils
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--query', required=True, help='The start search query')
