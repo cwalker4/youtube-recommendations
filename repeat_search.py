@@ -63,7 +63,7 @@ if __name__ == "__main__":
             print("Reached daily quota limit; halting search")
             break
 
-        yf = youtube_follower.YoutubeFollower(
+        yf = youtube_follower_selenium.YoutubeFollower(
                 query=query,
                 n_splits=search_params['n_splits'],
                 depth=search_params['depth'],
