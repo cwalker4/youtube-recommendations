@@ -13,7 +13,7 @@ from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 
 from youtube_follower import utils
@@ -180,7 +180,7 @@ class YoutubeFollower():
 
 
     def skip_ads(self):
-        wait = WebDriverWait(self.browser, 30)
+        wait = WebDriverWait(self.browser, 60)
         # press play on the video
         wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-play-button ytp-button']"))).click()
         # check whether video is skippable; if so, wait until skip button appears and click it
@@ -193,10 +193,10 @@ class YoutubeFollower():
             pass
         # if video has an unskippable ad wait for it to go away
         try:
-            wait.until(element_does_not_exist((By.XPATH, "//div[@class='ytp-ad-player-overlay-skip-or-preview']")))
+            wait.until(element_does_not_exist((By.XPATH, "//span[@class='ytp-ad-preview-container']")))
             return
         # do nothing if there is no ad
-        except:
+        except TimeoutException:
             return
 
 
