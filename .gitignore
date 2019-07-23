@@ -112,4 +112,4 @@ credentials/
 data/scrape_results*
 
 # system stuff
-.DS_store
+.DS_Store
