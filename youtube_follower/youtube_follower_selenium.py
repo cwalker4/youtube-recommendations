@@ -192,7 +192,7 @@ class YoutubeFollower():
             wait.until(element_does_not_exist((By.XPATH, "//div[@class='ytp-ad-player-overlay-skip-or-preview']")))
             return
         # do nothing if there is no ad
-        except NoSuchElementException:
+        except:
             return
 
 
