@@ -170,8 +170,12 @@ class YoutubeFollower():
         rec_elems = self.browser.find_elements_by_xpath("//a[@class='yt-simple-endpoint style-scope ytd-compact-video-renderer']")
         recs = []
         for i in range(self.n_splits):
-            video_id = rec_elems[i].get_attribute('href').split('?v=')[1]
-            recs.append(video_id)
+            try:
+                video_id = rec_elems[i].get_attribute('href').split('?v=')[1]
+                recs.append(video_id)
+            except:
+                print("Malformed contnet, could not get recommendation")
+
         return recs
 
 
