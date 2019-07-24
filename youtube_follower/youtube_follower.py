@@ -1,5 +1,3 @@
-from __future__ import unicode_literals
-
 from urllib.request import urlopen
 import re
 import json
@@ -13,7 +11,15 @@ import numpy as np
 from bs4 import BeautifulSoup
 import youtube_dl
 
+from selenium import webdriver
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import NoSuchElementException, TimeoutException
+from selenium.webdriver.support.ui import WebDriverWait
+
 from youtube_follower import utils
+from youtube_follower.utils import element_does_not_exist
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--query', required=True, help='The start search query')
@@ -21,9 +27,11 @@ parser.add_argument('--n_roots', default='5', type=int, help='The number of sear
 parser.add_argument('--n_splits', default='3', type=int, help='The branching factor of the exploration tree')
 parser.add_argument('--depth', default='5', type=int, help='The depth of the exploration')
 parser.add_argument('--outdir', default='../data/scrape_results', help='Where to save the results')
+parser.add_argument('--driver', default='html', help='One of html or selenium')
 
 class YoutubeFollower():
-    def __init__(self, query, n_splits, depth, outdir, text=False, verbose=True, const_depth=8, sample=False):
+    def __init__(self, query, n_splits, depth, outdir, text=False, verbose=True, const_depth=8, 
+        sample=False, driver='html'):
         """
         INPUT:
             query: (string) start query
@@ -46,6 +54,10 @@ class YoutubeFollower():
         self.outdir = outdir
         self.const_depth = const_depth
         self.sample = sample
+        self.driver = driver
+
+        if self.driver == 'selenium':
+            self.browser = webdriver.Firefox()
 
         # create the out directory if it doesn't already exist. Further, pull in 
         # video info from previous crawls to minimize API abuse. Initialize from
@@ -144,7 +156,7 @@ class YoutubeFollower():
 
     def parse_soup(self, soup):
         """
-        Helper function for get_recommendations.
+        HTML only. Helper function for get_recommendations.
 
         INPUT:
             soup
@@ -181,9 +193,54 @@ class YoutubeFollower():
             recs[ix] = rec.replace('/watch?v=', '').split('&')[0]
         return recs
 
+
+    def parse_page(self):
+        """
+        Selenium only. Handles YouTube ads to imitate a human user.
+        """
+        rec_elems = self.browser.find_elements_by_xpath("//a[@class='yt-simple-endpoint style-scope ytd-compact-video-renderer']")
+        recs = []
+        for i in range(self.n_splits):
+            try:
+                video_id = rec_elems[i].get_attribute('href').split('?v=')[1]
+                recs.append(video_id)
+            except:
+                print("Malformed contnet, could not get recommendation")
+
+        return recs
+
+    def skip_ads(self):
+        """
+        Selenium only. Handles YouTube ads to imitate a human user
+        
+        """
+        wait = WebDriverWait(self.browser, 30)
+        # press play on the video if possible
+        try:
+            wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-play-button ytp-button']"))).click()
+        except TimeoutException:
+            pass
+        # check whether video is skippable; if so, wait until skip button appears and click it
+        try:
+            preskipbutton = self.browser.find_element_by_xpath("//div[contains(@id, 'preskip-component')]")
+            skipbutton = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-ad-skip-button ytp-button']")))
+            skipbutton.click()
+            return
+        except NoSuchElementException:
+            pass
+        # if video has an unskippable ad wait for it to go away
+        try:
+            wait.until(element_does_not_exist((By.XPATH, "//span[@class='ytp-ad-preview-container']")))
+            return
+        # do nothing if there is no ad
+        except TimeoutException:
+            return
+
+
     def get_recommendations(self, video_id, depth):
         """
-        Scrapes the recommendations corresponding to video_id
+        Scrapes the recommendations corresponding to video_id. Split
+        into Selenium and HTML sections.
 
         INPUT:
             video_id: (str)
@@ -200,14 +257,25 @@ class YoutubeFollower():
             return []
 
         url = "http://youtube.com/watch?v={}".format(video_id)
-        while True:
-            try:
-                html = urlopen(url)
-                break
-            except:
-                time.sleep(1)
-        soup = BeautifulSoup(html, "lxml")
-        recs = self.parse_soup(soup)
+
+        if self.driver = 'html':
+            while True:
+                try:
+                    html = urlopen(url)
+                    break
+                except:
+                    time.sleep(1)
+            soup = BeautifulSoup(html, "lxml")
+            recs = self.parse_soup(soup)
+        else if self.driver = 'selenium':
+            while True:
+                try:
+                    self.browser.get(url)
+                    break
+                except:
+                    time.sleep(1)
+            self.skip_ads()
+            time.sleep(5)  # watch some of the video
 
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
@@ -216,7 +284,6 @@ class YoutubeFollower():
 
         self.search_info[video_id] = {'recommendations': recs,
                                        'depth': depth}
-
         if self.verbose:
             print("Recommendations for video {}: {}".format(video_id, recs))
         return recs
@@ -264,6 +331,8 @@ class YoutubeFollower():
             print('Starting crawl from root video {}'.format(video_id))
             print('Results will be saved to {}'.format(crawl_outdir))
         self.search(video_id)
+        if self.driver == 'selenium':
+            self.browser.close()
         self.populate_info()
         self.save_results(crawl_outdir)
 
@@ -275,7 +344,8 @@ if __name__ == "__main__":
         query=args.query, 
         n_splits=args.n_splits, 
         depth=args.depth,
-        outdir=args.outdir)
+        outdir=args.outdir,
+        driver=args.driver)
 
     for video_id in root_videos:
         yf.run(video_id.decode('utf-8'))
