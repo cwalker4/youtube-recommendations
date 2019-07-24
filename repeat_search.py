@@ -5,7 +5,7 @@ import json
 import sys
 import os
 
-from youtube_follower import youtube_follower_selenium
+from youtube_follower import youtube_follower
 from youtube_follower.utils import youtube
 
 def get_quota_cost(search_params):
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         #    print("Reached daily quota limit; halting search")
         #    break
 
-        yf = youtube_follower_selenium.YoutubeFollower(
+        yf = youtube_follower.YoutubeFollower(
                 query=query,
                 n_splits=search_params['n_splits'],
                 depth=search_params['depth'],
