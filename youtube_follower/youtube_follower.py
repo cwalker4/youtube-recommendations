@@ -258,7 +258,7 @@ class YoutubeFollower():
 
         url = "http://youtube.com/watch?v={}".format(video_id)
 
-        if self.driver = 'html':
+        if self.driver == 'html':
             while True:
                 try:
                     html = urlopen(url)
@@ -267,7 +267,7 @@ class YoutubeFollower():
                     time.sleep(1)
             soup = BeautifulSoup(html, "lxml")
             recs = self.parse_soup(soup)
-        else if self.driver = 'selenium':
+        elif self.driver == 'selenium':
             while True:
                 try:
                     self.browser.get(url)

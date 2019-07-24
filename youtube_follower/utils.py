@@ -3,6 +3,8 @@ import os
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
+from selenium.common.exceptions import NoSuchElementException
+
 
 KEY_LOC = os.path.join(os.path.dirname(__file__), '../credentials/api_key.txt')
 with open(KEY_LOC, 'r') as f:
@@ -138,6 +140,23 @@ def get_comments(video_id, max_results=5):
         result.append(comment['snippet']['textOriginal'].encode('ascii', 'ignore'))
 
     return(result)
+
+
+class element_does_not_exist(object):
+    """
+    Selenium expectation for waiting until an object no longer exists
+
+    locator -- used to identify the element
+    """
+    def __init__(self, locator):
+        self.locator = locator
+
+    def __call__(self, driver):
+        try:
+            element = driver.find_element(*self.locator)
+        except NoSuchElementException:
+            return True
+        return False
 
 
 
