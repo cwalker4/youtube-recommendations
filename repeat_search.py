@@ -68,6 +68,7 @@ if __name__ == "__main__":
                 n_splits=search_params['n_splits'],
                 depth=search_params['depth'],
                 outdir='data/scrape_results_redo_selenium',
-                verbose=False)
+                verbose=False,
+                driver='selenium')
         yf.run(root_id)
 
