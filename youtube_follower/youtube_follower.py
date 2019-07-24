@@ -214,12 +214,6 @@ class YoutubeFollower():
         Selenium only. Handles YouTube ads to imitate a human user
         
         """
-        wait = WebDriverWait(self.browser, 30)
-        # press play on the video if possible
-        try:
-            wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-play-button ytp-button']"))).click()
-        except TimeoutException:
-            pass
         # check whether video is skippable; if so, wait until skip button appears and click it
         try:
             preskipbutton = self.browser.find_element_by_xpath("//div[contains(@id, 'preskip-component')]")
@@ -274,8 +268,15 @@ class YoutubeFollower():
                     break
                 except:
                     time.sleep(1)
-            self.skip_ads()
-            time.sleep(5)  # watch some of the video
+            # press play on the video if possible
+            wait = WebDriverWait(self.browser, 30)
+            try:
+                wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-play-button ytp-button']"))).click()
+            except TimeoutException:
+                pass
+            #self.skip_ads()
+            time.sleep(10)  # watch some of the video
+            recs = self.parse_page()
 
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
