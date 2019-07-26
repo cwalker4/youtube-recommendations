@@ -139,6 +139,7 @@ class YoutubeFollower():
             video_data = metadata.get(video_id)
             if not video_data:
                 print("Could not get metadata for {}".format(video_id))
+                continue
 
             self.video_info[video_id] = {'views': video_data['views'],
                                          'likes': video_data['likes'],
