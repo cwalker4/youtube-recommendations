@@ -44,10 +44,12 @@ knitr::knit_hooks$set(inline = function(x) {
 
 library(texreg)
 
+version_string_pretty <- str_to_title(str_replace(params$analysis_dir, 'analysis_', ''))
+
 ```
 
 ---
-title: "Project Analysis"
+title: "Project Analysis for `r version_string_pretty` Scrape Results"
 ---
 
 This notebook runs the analysis associated with the course project for MS&E 234. Very basic preliminary poking at the data collected by the scraper. 
