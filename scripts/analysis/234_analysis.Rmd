@@ -4,6 +4,8 @@ output:
     df_print: paged
   pdf_document:
     number_sections: no
+params:
+  analysis_dir: 'analysis_redo'
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
@@ -58,14 +60,14 @@ This notebook runs the analysis associated with the course project for MS&E 234.
 indir <- 'data/derived_data'
 
 # raw video info
-read_csv(here::here(indir, 'analysis_redo/video_info.csv'), na = c("", -1)) %>%
+read_csv(here::here(indir, params$analysis_dir, 'video_info.csv'), na = c("", -1)) %>%
   mutate_at(vars(category, dislikes, likes, views, n_comments), as.integer) -> video_info
 
 # category id <-> category name crosswalk
 category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
 
 # search info dataframe
-read_csv(here::here(indir, 'analysis_redo/search_info.csv'), na = c("", -1)) %>%
+read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
   select(-recommendations) %>%
   mutate(search = stringr::str_replace_all(search, ' ', '_')) -> search_info
 
@@ -74,10 +76,10 @@ video_info %>%
   mutate(p_like = likes / (likes + dislikes)) -> video_info
 
 # video degrees
-degrees <- read_csv(here::here(indir, 'analysis_redo/vertex_degrees.csv'))
+degrees <- read_csv(here::here(indir, params$analysis_dir, 'vertex_degrees.csv'))
 
 # pageranks
-prs <- read_csv(here::here(indir, 'analysis_redo/pageranks.csv'))
+prs <- read_csv(here::here(indir, params$analysis_dir, 'pageranks.csv'))
   
 ```
 
@@ -338,7 +340,7 @@ The motivation for this project was to get a sese of the polarization of the con
 
 ```{r}
 # import the channel-leaning information
-channel_leanings <- readr::read_csv(here::here(indir, 'analysis_redo/channel_classification.csv'))
+channel_leanings <- readr::read_csv(here::here(indir, params$analysis_dir, 'channel_classification.csv'))
 
 # make a query <-> party affiliation crosswalk
 dems <- c("jim clyburn", "kagan", "aoc", "susan rice", "john podesta", "sotomayor", "krysten sinema",
