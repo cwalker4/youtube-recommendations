@@ -9,7 +9,6 @@ import os
 import numpy as np
 
 from bs4 import BeautifulSoup
-import youtube_dl
 
 from selenium import webdriver
 from selenium.webdriver.common.keys import Keys
@@ -38,7 +37,7 @@ class YoutubeFollower():
             n_splits: (int) splitting factor
             depth: (int) depth of tree
             outdir: (string) where to save/look for results
-            text: (bool) whether to get text data (comments, subtitles, captions)
+            text: (bool) whether to get text data (comments)
             verbose: (bool) whether to print log info
             const_depth: (int) depth at which to stop branching and sample uniformly
                                from recommendations (toggled w/ sample parameter)
@@ -95,30 +94,6 @@ class YoutubeFollower():
 
         with open(os.path.join(crawl_outdir, 'params.json'), 'w') as f:
             json.dump(params_dict, f)
-
-
-    def get_subtitles(self, video_id):
-        """
-        Saves the subtitle track for video_id
-
-        INPUT:
-            video_id: (str)
-        """
-        if self.verbose:
-            print("Getting subtitles for {}".format(video_id))
-        url = "https://youtube.com/watch?v={}".format(video_id)
-
-        yt_opts = {"skip_download": True,
-                   "writesubtitles": True,
-                   "subtitlelangs": self._lang,
-                   "outtmpl": "results/captions/%(id)s.vtt",
-                   "no_warnings": True,
-                   "quiet": True}
-        try:
-            with youtube_dl.YoutubeDL(yt_opts) as yt:
-                yt.download([url])
-        except:
-            pass
 
 
     def populate_info(self):
