@@ -50,6 +50,41 @@ def search(query, max_results=10):
     return results
 
 
+def get_top_news_videos():
+    """
+    Gets the top world news videos from Youtube's 'News' channel
+
+    OUTPUT: 
+        video_ids: (list) video ids for the 15 videos in YouTube's Top Stories playlist
+    
+    """
+    # get the id for the Top Stories playlist
+    search_response = youtube.search().list(
+        part='id,snippet',
+        type='playlist',
+        channelId='UCYfdidRxbB8Qhf0Nx7ioOYw'
+    ).execute()
+
+    for item in search_response.get('items', []):
+    snippet = item.get('snippet')
+    if snippet['title'] == 'Top Stories':
+        playlist_id = item.get('id')['playlistId']
+
+    # get the videos in the Top Stories playlist
+    search_response = youtube.playlistItems().list(
+        playlistId=playlist_id,
+        part='id,snippet,contentDetails',
+        maxResults=50
+    ).execute()
+
+    video_ids = []
+    for search_result in search_response.get('items', []):
+        content_details = search_result.get('contentDetails')
+        video_ids.append(content_details['videoId'])
+
+    return video_ids
+
+
 def get_metadata_batch(video_ids):
     """
     Helper for get_metadata. Gets metadata for batches of max length of 45
