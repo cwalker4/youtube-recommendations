@@ -119,6 +119,6 @@ tibble(channel = right_patterns) %>%
 bind_rows(channels_matched, left_tbl, center_tbl, right_tbl) -> channels_matched
 
 channels_matched %>%
-  write_csv(here::here('data/derived_data/analysis_redo/channel_classification.csv'))
+  write_csv(here::here(video_indir, 'channel_classification.csv'))
 
 
