@@ -4,7 +4,7 @@ import json
 import sys
 import argparse
 import time
-import datetime
+from datetime import date
 import os
 import numpy as np
 
@@ -83,7 +83,8 @@ class YoutubeFollower():
 
         """
         params_dict = {'n_splits': self.n_splits,
-                       'depth': self.depth}
+                       'depth': self.depth,
+                       'date': str(date.today())}
         os.makedirs(crawl_outdir)
 
         with open(os.path.join(self.outdir, 'video_info.json'), 'w') as f:
@@ -124,12 +125,12 @@ class YoutubeFollower():
                                          'postdate': video_data['date'],
                                          'n_comments': video_data['n_comments'],
                                          'channel': video_data['channel'],
-                                         'title': video_data['title']}
+                                         'title': video_data['title'],
+                                         'date': str(date.today())}
             # Get text data if wanted
             if self.text:
                 comments = utils.get_comments(video_id, max_results=20)
                 self.video_info[video_id]['comments'] = comments
-                self.get_subtitles(video_id)
 
 
     def parse_soup(self, soup):
