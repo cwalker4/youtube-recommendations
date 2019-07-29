@@ -17,20 +17,13 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.common.exceptions import NoSuchElementException, TimeoutException
 from selenium.webdriver.support.ui import WebDriverWait
 
-from youtube_follower import utils
-from youtube_follower.utils import element_does_not_exist
+from . import utils
+from .utils import element_does_not_exist
 
-parser = argparse.ArgumentParser(description=__doc__)
-parser.add_argument('--query', required=True, help='The start search query')
-parser.add_argument('--n_roots', default='5', type=int, help='The number of search results to start the exploration')
-parser.add_argument('--n_splits', default='3', type=int, help='The branching factor of the exploration tree')
-parser.add_argument('--depth', default='5', type=int, help='The depth of the exploration')
-parser.add_argument('--outdir', default='../data/scrape_results', help='Where to save the results')
-parser.add_argument('--driver', default='html', help='One of html or selenium')
 
 class YoutubeFollower():
-    def __init__(self, query, n_splits, depth, outdir, text=False, verbose=True, const_depth=8, 
-        sample=False, driver='html'):
+    def __init__(self, outdir='scrape_results', query=None, n_splits=3, depth=5, text=False, verbose=True,
+     const_depth=8, sample=False, driver='html'):
         """
         INPUT:
             query: (string) start query
@@ -298,8 +291,6 @@ class YoutubeFollower():
                     continue
                 inactive_queue.append(video_id)
 
-    def search(self, root_id):
-        self.get_recommendation_tree(seed=root_id)
 
     def run(self, video_id):
         crawl_outdir = os.path.join(self.outdir, '{}_{}'.format(self.query, video_id))
@@ -310,25 +301,11 @@ class YoutubeFollower():
         if self.verbose:
             print('Starting crawl from root video {}'.format(video_id))
             print('Results will be saved to {}'.format(crawl_outdir))
-        self.search(video_id)
+        self.get_recommendation_tree(video_id)
         if self.driver == 'selenium':
             self.browser.close()
         self.populate_info()
         self.save_results(crawl_outdir)
-
-if __name__ == "__main__":
-    args = parser.parse_args()
-
-    root_videos = utils.search(args.query, max_results=args.n_roots)
-    yf = YoutubeFollower(
-        query=args.query, 
-        n_splits=args.n_splits, 
-        depth=args.depth,
-        outdir=args.outdir,
-        driver=args.driver)
-
-    for video_id in root_videos:
-        yf.run(video_id.decode('utf-8'))
 
 
 
