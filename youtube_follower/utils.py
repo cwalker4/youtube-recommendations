@@ -30,8 +30,7 @@ def search(query, max_results=10):
 
     """
 
-    # Call the search.list method to retrieve results matching the specified
-    # query term.
+    # Call the search.list method to retrieve results matching the query
     search_response = youtube.search().list(
       q=query,
       part='id,snippet',
@@ -39,15 +38,11 @@ def search(query, max_results=10):
       type='video'
     ).execute()
   
-    results = {}
-  
-    # Add each result to the appropriate list, and then display the lists of
-    # matching videos, channels, and playlists.
+    video_ids = []
     for search_result in search_response.get('items', []):
-        video_id = search_result['id']['videoId'].encode('ascii', 'ignore')
-        results[video_id] = search_result['snippet']['title'].encode('ascii', 'ignore')
+        video_ids.append(search_result['id']['videoId'])
 
-    return results
+    return video_ids
 
 
 def get_top_news_videos():
@@ -62,13 +57,14 @@ def get_top_news_videos():
     search_response = youtube.search().list(
         part='id,snippet',
         type='playlist',
-        channelId='UCYfdidRxbB8Qhf0Nx7ioOYw'
+        channelId='UCYfdidRxbB8Qhf0Nx7ioOYw',
+        maxResults=50
     ).execute()
 
     for item in search_response.get('items', []):
-    snippet = item.get('snippet')
-    if snippet['title'] == 'Top Stories':
-        playlist_id = item.get('id')['playlistId']
+        snippet = item.get('snippet')
+        if snippet['title'] == 'Top Stories':
+            playlist_id = item.get('id')['playlistId']
 
     # get the videos in the Top Stories playlist
     search_response = youtube.playlistItems().list(
