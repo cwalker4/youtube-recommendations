@@ -570,8 +570,10 @@ leaning_info %>%
   pull(isolation) -> lib_exposure
 
 isolation_index = cons_exposure - lib_exposure
+isolation_index
 
 ```
+
 
 
 ```{r}
