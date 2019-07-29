@@ -1,0 +1,115 @@
+---
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    number_sections: no
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = FALSE, 
+                      warning = FALSE,
+                      message = FALSE,
+                      cache.lazy = FALSE,
+                      # force output to LaTeX (which forces the
+                      # imposition of fig.pos) and proper figure alignment
+                      fig.align = 'center',
+                      fig.pos = 'H')
+
+library(dplyr)
+library(here)
+library(tidyr)
+library(stringr)
+library(forcats)
+library(readr)
+
+library(kableExtra)
+
+library(gridExtra)
+
+library(ggplot2)
+extrafont::loadfonts(quiet = TRUE)
+library(GGally)
+library(hrbrthemes)
+theme_set(theme_ipsum())
+library(atheylab.utils)
+
+knitr::knit_hooks$set(inline = function(x) {
+  atheylab.utils::pretty_print_inline(x, decimals = 2)
+})
+
+library(texreg)
+```
+
+---
+title: "Channel Classification Analysis"
+---
+
+Our current method of classifying channels by political leaning is pretty rough: let's take a look at how many we are able to catch.
+
+```{r data_import}
+# read in the classification
+channel_classification <-  read_csv(here('data/derived_data/analysis_redo/channel_classification.csv'))
+
+# get a list of all the channels we visited
+read_csv(here('data/derived_data/analysis_redo/video_info.csv')) %>%
+  filter(!is.na(channel)) %>%
+  mutate(channel = tolower(channel)) -> video_info
+
+video_info %>%
+  count(channel) %>%
+  arrange(-n) -> video_channels
+
+# join them together
+video_channels %>%
+  full_join(channel_classification, by='channel') -> class_full
+
+```
+
+First a summary table: how many R/L/C/missing channels do we have?
+
+```{r summ_tbl}
+class_full %>%
+  mutate(leaning = ifelse(is.na(leaning), 'unclassified', leaning)) %>%
+  count(leaning) %>%
+  mutate(share = n / sum(n)) -> summ_tbl
+
+summ_tbl %>%
+  mutate(share = scales::percent(share))
+```
+
+Anything but a pie chart:
+
+```{r summ_viz}
+summ_tbl %>%
+  ggplot() + 
+  geom_col(aes('', share, fill = leaning)) + 
+  scale_fill_manual(values = c("purple", "blue", "red", "gray")) +
+  ggtitle('Channel Classification Share')
+```
+
+What if we take into account the number of videos we have from each? R/L/C/missing weighted by number of videos from each channel.
+
+```{r}
+class_full %>%
+  mutate(leaning = ifelse(is.na(leaning), 'unclassified', leaning)) %>%
+  group_by(leaning) %>%
+  summarise(n = sum(n, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(share = n / sum(n)) -> summ_tbl_alt
+
+summ_tbl_alt %>%
+  mutate(share = scales::percent(share))
+
+```
+
+```{r}
+summ_tbl_alt %>%
+  ggplot() + 
+  geom_col(aes('', share, fill = leaning)) + 
+  scale_fill_manual(values = c("purple", "blue", "red", "gray")) + 
+  ggtitle('Channel Classification Share Weighted by Video Count')
+
+```
+
+
