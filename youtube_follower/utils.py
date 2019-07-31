@@ -47,36 +47,39 @@ def search(query, max_results=10):
 
 def get_top_news_videos():
     """
-    Gets the top world news videos from Youtube's 'News' channel
+    Gets the top news videos from Youtube's 'News', 'World News', and 'National News' channels
 
     OUTPUT: 
-        video_ids: (list) video ids for the 15 videos in YouTube's Top Stories playlist
+        video_ids: (list) video ids for the videos in YouTube's Top Stories playlists for each channel
     
     """
-    # get the id for the Top Stories playlist
-    search_response = youtube.search().list(
-        part='id,snippet',
-        type='playlist',
-        channelId='UCYfdidRxbB8Qhf0Nx7ioOYw',
-        maxResults=50
-    ).execute()
-
-    for item in search_response.get('items', []):
-        snippet = item.get('snippet')
-        if snippet['title'] == 'Top Stories':
-            playlist_id = item.get('id')['playlistId']
-
-    # get the videos in the Top Stories playlist
-    search_response = youtube.playlistItems().list(
-        playlistId=playlist_id,
-        part='id,snippet,contentDetails',
-        maxResults=50
-    ).execute()
-
+    channels = ['UCYfdidRxbB8Qhf0Nx7ioOYw', 'UCvAvFl2OGsuDSoOo93Kd0nA', 'UCcE169gw8kJCzyCJZXb7DQw']
     video_ids = []
-    for search_result in search_response.get('items', []):
-        content_details = search_result.get('contentDetails')
-        video_ids.append(content_details['videoId'])
+    for channel_id in channels:
+        # get the id for the Top Stories playlist
+        search_response = youtube.search().list(
+            part='id,snippet',
+            type='playlist',
+            channelId=channel_id,
+            maxResults=50
+        ).execute()
+    
+        for item in search_response.get('items', []):
+            snippet = item.get('snippet')
+            if snippet['title'] == 'Top Stories':
+                playlist_id = item.get('id')['playlistId']
+    
+        # get the videos in the Top Stories playlist
+        search_response = youtube.playlistItems().list(
+            playlistId=playlist_id,
+            part='contentDetails',
+            maxResults=50
+        ).execute()
+    
+        for search_result in search_response.get('items', []):
+            video_id = search_result.get('contentDetails')['videoId']
+            if video_id not in video_ids:
+                video_ids.append(video_id)
 
     return video_ids
 
