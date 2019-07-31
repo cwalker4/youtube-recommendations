@@ -117,7 +117,7 @@ class YoutubeFollower():
                                          'category': video_data['category_id'],
                                          'postdate': video_data['date'],
                                          'n_comments': video_data['n_comments'],
-                                         'channel_name': video_data['channel_name'],
+                                         'channel': video_data['channel'],
                                          'channel_id': video_data['channel_id']
                                          'title': video_data['title'],
                                          'date': str(date.today())}
