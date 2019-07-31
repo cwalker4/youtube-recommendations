@@ -23,7 +23,7 @@ from .utils import element_does_not_exist
 
 class YoutubeFollower():
     def __init__(self, outdir='scrape_results', query=None, n_splits=3, depth=5, text=False, verbose=True,
-     const_depth=8, sample=False, driver='html'):
+     const_depth=5, sample=False, driver='html'):
         """
         INPUT:
             query: (string) start query
@@ -254,7 +254,7 @@ class YoutubeFollower():
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
         if self.sample == True and depth >= self.const_depth:
-            recs = np.array(recs, dtype=str)[np.random.rand(self.n_splits) > 0.5]
+            recs = np.array(recs, dtype=str)[np.random.rand(self.n_splits) > 1/self.n_splits]
 
         self.search_info[video_id] = {'recommendations': recs,
                                        'depth': depth}
