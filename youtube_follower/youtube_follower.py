@@ -152,7 +152,8 @@ class YoutubeFollower():
                     rec_id = video_list.find('a')['href']
                     recs.append(rec_id)
                 except:
-                    print ('WARNING Could not get a up next recommendation because of malformed content')
+                    if self.verbose == 2:
+                        print('WARNING Could not get a up next recommendation because of malformed content')
                     pass
                 upnext = False
             else:
