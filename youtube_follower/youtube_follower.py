@@ -264,7 +264,7 @@ class YoutubeFollower():
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
         if self.sample == True and depth >= self.const_depth and len(recs) != 0:
-            recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) > 1/len(recs)]
+            recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) < 1/len(recs)]
 
         self.search_info[video_id] = {'recommendations': list(recs),
                                        'depth': depth}
