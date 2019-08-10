@@ -113,3 +113,6 @@ data/scrape_results*
 
 # system stuff
 .DS_Store
+
+# misc
+meeting_notes.md

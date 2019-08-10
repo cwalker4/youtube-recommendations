@@ -78,6 +78,10 @@ class YoutubeFollower():
         params_dict = {'n_splits': self.n_splits,
                        'depth': self.depth,
                        'date': str(date.today())}
+        if self.sample:
+            params_dict['sample'] = self.sample
+            params_dict['const_depth'] = self.const_depth
+            
         os.makedirs(crawl_outdir)
 
         with open(os.path.join(self.outdir, 'video_info.json'), 'w') as f:
