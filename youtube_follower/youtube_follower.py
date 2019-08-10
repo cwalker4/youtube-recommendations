@@ -163,9 +163,11 @@ class YoutubeFollower():
                                  replace('/watch?v=', '')
                         recs.append(rec_id)
                     except IndexError:
-                        print('There are not enough recommendations')
+                        if self.verbose == 2:
+                            print('There are not enough recommendations')
                     except (AttributeError, TypeError) as e:
-                        print('WARNING Malformed content, could not get recommendation')
+                        if self.verbose == 2:
+                            print('WARNING Malformed content, could not get recommendation')
 
         # clean up the video ids
         for ix, rec in enumerate(recs):
@@ -184,7 +186,8 @@ class YoutubeFollower():
                 video_id = rec_elems[i].get_attribute('href').split('?v=')[1]
                 recs.append(video_id)
             except:
-                print("Malformed contnet, could not get recommendation")
+                if self.verbose == 2:
+                    print("Malformed content, could not get recommendation")
 
         return recs
 
