@@ -5,7 +5,8 @@ output:
   pdf_document:
     number_sections: no
 params:
-  analysis_dir: 'analysis_redo'
+  analysis_dir: 'analysis'
+  queries: FALSE
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
@@ -157,7 +158,7 @@ stats_by_depth %>%
   geom_ribbon(aes(ymin=mean-se, ymax=mean+se), alpha=0.1) +
   ylab("Average Views") +
   xlab("BFS Depth") +
-  scale_x_continuous(breaks=1:8)
+  scale_x_continuous(breaks=1:max(stats_by_depth$depth))
 
 ```
 
@@ -178,7 +179,7 @@ stats_by_depth %>%
   ylab("Fraction of Likes/Dislikes") +
   xlab("BFS Depth") + 
   scale_fill_manual(name = "", values = c("red", "darkgreen")) +
-  scale_x_continuous(breaks=1:8)
+  scale_x_continuous(breaks=1:stats_by_depth$depth)
 
 ```
 
@@ -295,6 +296,8 @@ degrees %>%
   filter(!is.na(val)) -> deg_stats_long
   
 deg_stats_long %>%
+  filter(stat %in% c('dislikes', 'likes', 'n_comments', 'views', 'p_like')) %>%
+  mutate_at('val', as.numeric) %>%
   group_by(in_deg, stat) %>%
   dplyr::summarize(mean = mean(val, na.rm = TRUE),
             se = sd(val, na.rm = TRUE) / sqrt(length(val)),
@@ -320,6 +323,7 @@ How do things vary with PageRanks?
 ```{r}
 deg_stats_long %>%
   filter(stat %in% c("views", "p_like")) %>%
+  mutate_at('val', as.numeric) %>%
   left_join(prs, by = 'video_id') %>%
   mutate(pagerank = cut(pagerank, seq(0, 0.005, 0.0005), labels = FALSE) * 0.0005) %>%
   group_by(pagerank, stat) %>%
@@ -364,28 +368,37 @@ tibble(query = reps) %>%
 
 query_classifications <- bind_rows(l_queries, r_queries)
 
-# join the query and channel classifications into the saerch info dataframe
-search_w_info %>%
-  mutate_at("channel", tolower) %>%
-  left_join(channel_leanings, by = 'channel') %>%
-  left_join(query_classifications, by = 'query') %>%
-  select(search, query, video_id, depth, channel, leaning, query_leaning) -> search_leanings
+# join the query and channel classifications into the search info dataframe
+if (!params$queries) {
+  search_w_info %>%
+    mutate_at("channel", tolower) %>%
+    left_join(channel_leanings, by = 'channel') %>%
+    select(search, video_id, depth, channel, leaning) -> search_leanings
+} else {
+  search_w_info %>%
+    mutate_at("channel", tolower) %>%
+    left_join(channel_leanings, by = 'channel') %>%
+    left_join(query_classifications, by = 'query') %>%
+    select(search, query, video_id, depth, channel, leaning, query_leaning) -> search_leanings
+}
+
 
 ```
 
 ```{r}
 # print out the table of queries and classifications
-query_classifications %>%
-  arrange(query) %>%
-  kable(format = "latex",
-        caption = "Queries and Leanings",
-        booktabs = TRUE,
-        digits = 2,
-        col.names = c("Query", "Leaning"),
-        longtable = TRUE) %>%
-  kable_styling()
+if (params$queries) {
+  query_classifications %>%
+    arrange(query) %>%
+    kable(format = "latex",
+          caption = "Queries and Leanings",
+          booktabs = TRUE,
+          digits = 2,
+          col.names = c("Query", "Leaning"),
+          longtable = TRUE) %>%
+    kable_styling()
+}
 ```
-
 
 First look at the counts of R vs L vs C leaning videos. Looks like we have mostly left leaning videos.
 
@@ -434,26 +447,26 @@ base_leanings %>%
   kable_styling()
 ```
 
-What sorts of queries return the most R vs L leaning videos?
-
 ```{r}
-search_leanings %>%
-  filter(!is.na(leaning)) %>%
-  group_by(query, leaning) %>%
-  summarise(n = n()) %>%
-  mutate(freq = n / sum(n)) -> query_tree_leanings
-
-query_tree_leanings %>%
-  filter(leaning == 'L') %>%
-  select(query, freq) %>%
-  top_n(10) %>%
-  arrange(-freq)
-
-query_tree_leanings %>%
-  filter(leaning == 'R') %>%
-  select(query, freq) %>%
-  top_n(10) %>%
-  arrange(-freq)
+if (params$queries) {
+  search_leanings %>%
+    filter(!is.na(leaning)) %>%
+    group_by(query, leaning) %>%
+    summarise(n = n()) %>%
+    mutate(freq = n / sum(n)) -> query_tree_leanings
+  
+  query_tree_leanings %>%
+    filter(leaning == 'L') %>%
+    select(query, freq) %>%
+    top_n(10) %>%
+    arrange(-freq)
+  
+  query_tree_leanings %>%
+    filter(leaning == 'R') %>%
+    select(query, freq) %>%
+    top_n(10) %>%
+    arrange(-freq)
+}
 
 ```
 
@@ -479,25 +492,25 @@ leaning_by_depth %>%
 
 ```
 
-Breaking this up by leaning of the query:
-
 ```{r}
-search_leanings %>%
-  filter(!is.na(leaning), !is.na(query_leaning)) %>%
-  group_by(query_leaning, depth, leaning) %>%
-  summarise(n = n()) %>%
-  mutate(freq = n / sum(n)) %>%
-  ungroup() %>%
-  mutate(query_leaning = ifelse(query_leaning == 'L', 'Left-Leaning Query', 'Right-Leaning Query'),
-         leaning = case_when(leaning == "C" ~ "Center",
-                             leaning == "L" ~ "Left",
-                             leaning == "R" ~ "Right")) %>%
-  ggplot() + 
-  geom_col(aes(depth, freq, fill = leaning)) + 
-  scale_fill_manual(values = c("purple", "blue", "red")) +
-  facet_wrap(~ query_leaning) +
-  ylab("Frequency") + 
-  xlab("BFS Depth")
+if (params$queries) {
+  search_leanings %>%
+    filter(!is.na(leaning), !is.na(query_leaning)) %>%
+    group_by(query_leaning, depth, leaning) %>%
+    summarise(n = n()) %>%
+    mutate(freq = n / sum(n)) %>%
+    ungroup() %>%
+    mutate(query_leaning = ifelse(query_leaning == 'L', 'Left-Leaning Query', 'Right-Leaning Query'),
+           leaning = case_when(leaning == "C" ~ "Center",
+                               leaning == "L" ~ "Left",
+                               leaning == "R" ~ "Right")) %>%
+    ggplot() + 
+    geom_col(aes(depth, freq, fill = leaning)) + 
+    scale_fill_manual(values = c("purple", "blue", "red")) +
+    facet_wrap(~ query_leaning) +
+    ylab("Frequency") + 
+    xlab("BFS Depth")
+}
 
 ```
 
