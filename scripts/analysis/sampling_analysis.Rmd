@@ -1,0 +1,112 @@
+---
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    number_sections: no
+params:
+  analysis_dir: 'analysis'
+  depth: 15
+  n_splits: 3
+  const_depth: 4
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE,
+                      cache = FALSE, 
+                      warning = FALSE,
+                      message = FALSE,
+                      cache.lazy = FALSE,
+                      # force output to LaTeX (which forces the
+                      # imposition of fig.pos) and proper figure alignment
+                      fig.align = 'center',
+                      fig.pos = 'H')
+
+library(dplyr)
+library(here)
+library(tidyr)
+library(stringr)
+library(forcats)
+library(readr)
+
+library(kableExtra)
+
+library(gridExtra)
+
+library(ggplot2)
+extrafont::loadfonts(quiet = TRUE)
+library(GGally)
+library(hrbrthemes)
+theme_set(theme_ipsum())
+library(atheylab.utils)
+
+knitr::knit_hooks$set(inline = function(x) {
+  atheylab.utils::pretty_print_inline(x, decimals = 2)
+})
+
+library(texreg)
+```
+
+---
+title: "Sampling Exploration"
+---
+
+In the new scraper we start uniformly sampling from the recommended videos so we are following one recommendation in expectation. Specifically, if at each node we follow $n$ recommendations, past our critical depth we follow each of the $n$ recommendations with probability $\frac{1}{n}$. The goal is to approach something resembling a stationary distribution (w.r.t. features of interest) without the exponential growth in number of videos at each depth. 
+
+
+```{r}
+################################################################################
+# data import + tidying
+################################################################################
+
+indir <- 'data/derived_data'
+
+# raw video info
+read_csv(here::here(indir, params$analysis_dir, 'video_info.csv'), na = c("", -1)) %>%
+  mutate_at(vars(category, dislikes, likes, views, n_comments), as.integer) -> video_info
+
+# category id <-> category name crosswalk
+category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
+
+# search info dataframe
+read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
+  select(-recommendations) %>%
+  mutate(search = stringr::str_replace_all(search, ' ', '_')) -> search_info
+  
+```
+
+Let's take a look at the number of videos at each depth, averaged across all our trees. The first concerning thing to note is that we are visiting far fewer videos than expected, based on our search criteria. 
+
+```{r vids_per_depth}
+expected_nvids <- function(depth, n_splits, const_depth) {
+  ex <- rep(n_splits^const_depth, depth+1)
+  for (i in 1:const_depth) {
+    ex[i] <- n_splits^(i-1)
+  }
+  return(ex)
+}
+
+expected_n <- expected_nvids(params$depth, params$n_splits, params$const_depth)
+
+search_info %>%
+  group_by(search, depth) %>%
+  tally() %>%
+  group_by(depth) %>%
+  summarise(n = mean(n)) -> n_vids_by_depth
+
+n_vids_by_depth %>%
+  mutate(expected = expected_n) %>%
+  rename(actual = n) %>%
+  gather(stat, n, -depth) %>%
+  ggplot() +
+  geom_col(aes(depth, n, fill = stat), position = 'dodge') 
+
+```
+
+
+
+
+
+
+
+
+
