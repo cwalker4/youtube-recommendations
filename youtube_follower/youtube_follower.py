@@ -292,6 +292,8 @@ class YoutubeFollower():
                 queue = inactive_queue
                 inactive_queue = []
                 depth += 1
+                if self.verbose >= 1:
+                    print("\tTree at depth {}".format(depth))
             current_video = queue.pop(0)
             recs = self.get_recommendations(current_video, depth)
             for video_id in recs:
