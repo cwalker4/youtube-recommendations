@@ -53,22 +53,10 @@ def get_top_news_videos():
         video_ids: (list) video ids for the videos in YouTube's Top Stories playlists for each channel
     
     """
-    channels = ['UCYfdidRxbB8Qhf0Nx7ioOYw', 'UCvAvFl2OGsuDSoOo93Kd0nA', 'UCcE169gw8kJCzyCJZXb7DQw']
+    playlists = ['PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w', 'PLNjtpXOAJhQLmUEyuWw4hW_6gX8JMJUof', 'PLr1-FC1l_JLFcq9r9Y3uFLkH8G37WmMRQ']
     video_ids = []
-    for channel_id in channels:
-        # get the id for the Top Stories playlist
-        search_response = youtube.search().list(
-            part='id,snippet',
-            type='playlist',
-            channelId=channel_id,
-            maxResults=50
-        ).execute()
     
-        for item in search_response.get('items', []):
-            snippet = item.get('snippet')
-            if snippet['title'] == 'Top Stories':
-                playlist_id = item.get('id')['playlistId']
-    
+    for playlist_id in playlists:
         # get the videos in the Top Stories playlist
         search_response = youtube.playlistItems().list(
             playlistId=playlist_id,
