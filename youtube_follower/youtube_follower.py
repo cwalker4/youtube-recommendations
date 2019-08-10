@@ -51,7 +51,7 @@ class YoutubeFollower():
         if self.driver == 'selenium':
             self.browser = webdriver.Firefox()
 
-        # create the out directory if it doesn't already exist. Further, pull in 
+        # create the out directory if it doesn't already exist. Further, pull in
         # video info from previous crawls to minimize API abuse. Initialize from
         # scratch if not.
         if os.path.exists(self.outdir):
@@ -118,7 +118,7 @@ class YoutubeFollower():
                                          'postdate': video_data['date'],
                                          'n_comments': video_data['n_comments'],
                                          'channel': video_data['channel'],
-                                         'channel_id': video_data['channel_id']
+                                         'channel_id': video_data['channel_id'],
                                          'title': video_data['title'],
                                          'date': str(date.today())}
             # Get text data if wanted
@@ -139,7 +139,7 @@ class YoutubeFollower():
         """
 
         recs = []
-        upnext = True 
+        upnext = True
         for video_list in soup.findAll('ul', {'class': 'video-list'}):
             if upnext:
                 try:
@@ -185,7 +185,7 @@ class YoutubeFollower():
     def skip_ads(self):
         """
         Selenium only. Handles YouTube ads to imitate a human user
-        
+
         """
         # check whether video is skippable; if so, wait until skip button appears and click it
         try:
@@ -253,10 +253,10 @@ class YoutubeFollower():
 
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
-        if self.sample == True and depth >= self.const_depth:
-            recs = np.array(recs, dtype=str)[np.random.rand(self.n_splits) > 1/self.n_splits]
+        if self.sample == True and depth >= self.const_depth and len(recs) != 0:
+            recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) > 1/len(recs)]
 
-        self.search_info[video_id] = {'recommendations': recs,
+        self.search_info[video_id] = {'recommendations': list(recs),
                                        'depth': depth}
         if self.verbose:
             print("Recommendations for video {}: {}".format(video_id, recs))
@@ -294,7 +294,10 @@ class YoutubeFollower():
 
 
     def run(self, video_id):
-        crawl_outdir = os.path.join(self.outdir, '{}_{}'.format(self.query, video_id))
+        if self.query is None:
+            crawl_outdir = os.path.join(self.outdir, video_id)
+        else:
+            crawl_outdir = os.path.join(self.outdir, '{}_{}'.format(self.query, video_id))
         if os.path.exists(crawl_outdir):
             if self.verbose:
                 print('Tree rooted at video {} already exists; skipping.'.format(video_id))
