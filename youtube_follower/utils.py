@@ -140,7 +140,23 @@ def get_metadata(video_ids):
 
     for ix in range(0, len(video_ids), batch_size):
         batch = video_ids[ix: ix + batch_size]
-        result.update(get_metadata_batch(batch))
+        # try getting info in batch
+        for _ in range(10):
+            try:
+                result.update(get_metadata_batch(batch))
+                break
+            except HttpError:
+                continue
+        # if can't get in batch, try getting individually 
+        else:
+            for video_id in batch:
+                try:
+                    result.update(get_metadata_batch(video_id))
+                except HttpError, e:
+                    print('An HTTP error {} occured:\n{}'.format(e.resp.status, e.content))
+                    continue
+
+
 
     return result
 
