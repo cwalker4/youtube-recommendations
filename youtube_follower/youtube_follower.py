@@ -82,7 +82,7 @@ class YoutubeFollower():
         if self.sample:
             params_dict['sample'] = self.sample
             params_dict['const_depth'] = self.const_depth
-            
+
         os.makedirs(crawl_outdir)
 
         with open(os.path.join(self.outdir, 'video_info.json'), 'w') as f:
@@ -293,7 +293,7 @@ class YoutubeFollower():
                 queue = inactive_queue
                 inactive_queue = []
                 depth += 1
-                if self.verbose >= 1:
+                if self.verbose == 2:
                     print("\tTree at depth {}".format(depth))
             current_video = queue.pop(0)
             recs = self.get_recommendations(current_video, depth)
