@@ -152,7 +152,7 @@ def get_metadata(video_ids):
             for video_id in batch:
                 try:
                     result.update(get_metadata_batch(video_id))
-                except HttpError, e:
+                except HttpError as e:
                     print('An HTTP error {} occured:\n{}'.format(e.resp.status, e.content))
                     continue
 
