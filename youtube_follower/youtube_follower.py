@@ -1,4 +1,3 @@
-from urllib.request import urlopen
 import re
 import json
 import sys
@@ -6,7 +5,9 @@ import argparse
 import time
 from datetime import date
 import os
+
 import numpy as np
+from urllib.request import urlopen
 
 from bs4 import BeautifulSoup
 
@@ -22,7 +23,7 @@ from .utils import element_does_not_exist
 
 
 class YoutubeFollower():
-    def __init__(self, outdir='scrape_results', query=None, n_splits=3, depth=5, text=False, verbose=True,
+    def __init__(self, outdir='scrape_results', query=None, n_splits=3, depth=5, text=False, verbose=1,
      const_depth=5, sample=False, driver='html'):
         """
         INPUT:
@@ -31,7 +32,7 @@ class YoutubeFollower():
             depth: (int) depth of tree
             outdir: (string) where to save/look for results
             text: (bool) whether to get text data (comments)
-            verbose: (bool) whether to print log info
+            verbose: (int) how much info to print: 0 = nothing, 1 = milestones, 2 = recommendations + warnings
             const_depth: (int) depth at which to stop branching and sample uniformly
                                from recommendations (toggled w/ sample parameter)
             sample: (bool) whether to sample from recommendations after const_depth splits
@@ -57,7 +58,7 @@ class YoutubeFollower():
         if os.path.exists(self.outdir):
             video_info_path = os.path.join(self.outdir, 'video_info.json')
             if os.path.exists(video_info_path):
-                if self.verbose:
+                if self.verbose == 2:
                     print('Existing video info found in {}; loading'.format(video_info_path))
                 with open(video_info_path) as f:
                     self.video_info = json.load(f)
@@ -98,20 +99,21 @@ class YoutubeFollower():
         """
         Fills the video info dictionary with video data
         """
-        if self.verbose:
-            print("Getting all metadata...")
+        if self.verbose >= 1:
+            print("Getting video metadata.")
         # only get metadata for videos we haven't seen before
         video_ids = set(self.search_info.keys())
         video_ids = list(video_ids.difference(set(self.video_info.keys())))
         metadata = utils.get_metadata(video_ids)
 
         for video_id in video_ids:
-            if self.verbose:
+            if self.verbose == 2:
                 print("Logging info for {}".format(video_id))
 
             video_data = metadata.get(video_id)
             if not video_data:
-                print("Could not get metadata for {}".format(video_id))
+                if self.verbose == 2:
+                    print("Could not get metadata for {}".format(video_id))
                 continue
 
             self.video_info[video_id] = {'views': video_data['views'],
@@ -262,7 +264,7 @@ class YoutubeFollower():
 
         self.search_info[video_id] = {'recommendations': list(recs),
                                        'depth': depth}
-        if self.verbose:
+        if self.verbose == 2:
             print("Recommendations for video {}: {}".format(video_id, recs))
         return recs
 
@@ -291,7 +293,7 @@ class YoutubeFollower():
             recs = self.get_recommendations(current_video, depth)
             for video_id in recs:
                 if video_id in self.search_info:
-                    if self.verbose:
+                    if self.verbose == 2:
                         print("Video {} has already been visited".format(video_id))
                     continue
                 inactive_queue.append(video_id)
@@ -303,10 +305,9 @@ class YoutubeFollower():
         else:
             crawl_outdir = os.path.join(self.outdir, '{}_{}'.format(self.query, video_id))
         if os.path.exists(crawl_outdir):
-            if self.verbose:
-                print('Tree rooted at video {} already exists; skipping.'.format(video_id))
+            print('Tree rooted at video {} already exists.'.format(video_id))
             return
-        if self.verbose:
+        if self.verbose >= 1:
             print('Starting crawl from root video {}'.format(video_id))
             print('Results will be saved to {}'.format(crawl_outdir))
         self.get_recommendation_tree(video_id)
