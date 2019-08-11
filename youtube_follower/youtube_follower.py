@@ -145,30 +145,27 @@ class YoutubeFollower():
         """
 
         recs = []
-        upnext = True
         for video_list in soup.findAll('ul', {'class': 'video-list'}):
-            if upnext:
-                try:
-                    rec_id = video_list.find('a')['href']
-                    recs.append(rec_id)
-                except:
-                    if self.verbose == 2:
-                        print('WARNING Could not get a up next recommendation because of malformed content')
-                    pass
+            # try getting the "up next" video 
+            try:
+                rec_id = video_list.find('a')['href']
+                recs.append(rec_id)
+                upnext = True
+            except:
+                if self.verbose == 2:
+                    print('WARNING Could not get up next recommendation.')
                 upnext = False
-            else:
-                for i in range(1, self.n_splits):
-                    try:
-                        rec_id = video_list.contents[i].\
-                                 find('a', {'href': re.compile('^/watch')})['href'].\
-                                 replace('/watch?v=', '')
-                        recs.append(rec_id)
-                    except IndexError:
-                        if self.verbose == 2:
-                            print('There are not enough recommendations')
-                    except (AttributeError, TypeError) as e:
-                        if self.verbose == 2:
-                            print('WARNING Malformed content, could not get recommendation')
+
+            start_ix = 1 if upnext else 0
+            for i in range(start_ix, self.n_splits):
+                try:
+                    rec_id = video_list.contents[i].\
+                             find('a', {'href': re.compile('^/watch')})['href'].\
+                             replace('/watch?v=', '')
+                    recs.append(rec_id)
+                except (AttributeError, TypeError) as e:
+                    if self.verbose == 2:
+                        print('WARNING Could not get recommendation.')
 
         # clean up the video ids
         for ix, rec in enumerate(recs):
@@ -242,8 +239,15 @@ class YoutubeFollower():
                     break
                 except:
                     time.sleep(1)
-            soup = BeautifulSoup(html, "lxml")
-            recs = self.parse_soup(soup)
+            for _ in range(10):
+                soup = BeautifulSoup(html, "lxml")
+                recs = self.parse_soup(soup)
+                if len(recs) == self.n_splits and not self.sample:
+                    break
+            else:
+                if self.verbose >= 1:
+                    print("Could not get recommendations for {}".format(video_id))
+
         elif self.driver == 'selenium':
             while True:
                 try:
@@ -263,7 +267,7 @@ class YoutubeFollower():
 
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
-        if self.sample == True and depth >= self.const_depth and len(recs) != 0:
+        if all([self.sample == True, depth >= self.const_depth, len(recs) != 0]):
             recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) < 1/len(recs)]
 
         self.search_info[video_id] = {'recommendations': list(recs),
@@ -306,6 +310,9 @@ class YoutubeFollower():
 
 
     def run(self, video_id):
+        if not utils.video_exists(video_id):
+            print('Video {} is not available'.format(video_id))
+            return
         if self.query is None:
             crawl_outdir = os.path.join(self.outdir, video_id)
         else:
