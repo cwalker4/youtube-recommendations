@@ -55,7 +55,7 @@ def get_top_news_videos():
     """
     playlists = ['PL3ZQ5CpNulQldOL3T8g8k1mgWWysJfE9w', 'PLNjtpXOAJhQLmUEyuWw4hW_6gX8JMJUof', 'PLr1-FC1l_JLFcq9r9Y3uFLkH8G37WmMRQ']
     video_ids = []
-    
+
     for playlist_id in playlists:
         # get the videos in the Top Stories playlist
         search_response = youtube.playlistItems().list(
@@ -70,6 +70,20 @@ def get_top_news_videos():
                 video_ids.append(video_id)
 
     return video_ids
+
+
+def video_exists(video_id):
+    """
+    Check whether root video is still available
+
+    INPUT:
+        video_id: (str) video id
+
+    OUTPUT:
+        boolean for whether video is available
+    """
+    query = youtube.videos().list(id=video_id, part='id').execute()
+    return query.get('items')
 
 
 def get_metadata_batch(video_ids):
@@ -134,7 +148,7 @@ def get_metadata(video_ids):
                 result.update(get_metadata_batch(batch))
                 break
             except HttpError:
-                continue
+                pass
         # if can't get in batch, try getting individually 
         else:
             for video_id in batch:
