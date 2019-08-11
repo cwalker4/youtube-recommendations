@@ -133,6 +133,83 @@ class YoutubeFollower():
                 self.video_info[video_id]['comments'] = comments
 
 
+    def parse_selenium(self):
+        """
+        Selenium only. Handles YouTube ads to imitate a human user.
+        """
+        rec_elems = self.browser.find_elements_by_xpath("//a[@class='yt-simple-endpoint style-scope ytd-compact-video-renderer']")
+        recs = []
+        for i in range(self.n_splits):
+            try:
+                video_id = rec_elems[i].get_attribute('href').split('?v=')[1]
+                recs.append(video_id)
+            except:
+                if self.verbose == 2:
+                    print("Malformed content, could not get recommendation")
+
+        return recs
+
+    def skip_ads(self):
+        """
+        Selenium only. Handles YouTube ads to imitate a human user
+
+        """
+        # check whether video is skippable; if so, wait until skip button appears and click it
+        try:
+            preskipbutton = self.browser.find_element_by_xpath("//div[contains(@id, 'preskip-component')]")
+            skipbutton = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-ad-skip-button ytp-button']")))
+            skipbutton.click()
+            return
+        except NoSuchElementException:
+            pass
+        # if video has an unskippable ad wait for it to go away
+        try:
+            wait.until(element_does_not_exist((By.XPATH, "//span[@class='ytp-ad-preview-container']")))
+            return
+        # do nothing if there is no ad
+        except TimeoutException:
+            return
+
+    def get_recommendations_selenium(self, video_id, depth):
+        """
+        Scrapes the recommendations corresponding to video_id using Selenium
+        as the driver.
+
+        INPUT:
+            video_id: (str)
+            depth: (int) depth of search
+
+        OUTPUT:
+            recs: list of recommended video_ids
+        """
+        while True:
+            try:
+                self.browser.get(url)
+                break
+            except:
+                time.sleep(1)
+        # press play on the video if possible
+        wait = WebDriverWait(self.browser, 30)
+        try:
+            wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-play-button ytp-button']"))).click()
+        except TimeoutException:
+            pass
+        #self.skip_ads()
+        time.sleep(10)  # watch some of the video
+        recs = self.parse_selenium()        
+
+        # If we're (a) sampling, and (b) at our point of critical depth,
+        # hold onto recommendations uniformly at random
+        if all([self.sample == True, depth >= self.const_depth, len(recs) != 0]):
+            recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) < 1/len(recs)]
+
+        self.search_info[video_id] = {'recommendations': list(recs),
+                                       'depth': depth}
+        if self.verbose == 2:
+            print("Recommendations for video {}: {}".format(video_id, recs))
+        return recs
+
+
     def parse_soup(self, soup):
         """
         HTML only. Helper function for get_recommendations.
@@ -173,44 +250,6 @@ class YoutubeFollower():
         return recs
 
 
-    def parse_page(self):
-        """
-        Selenium only. Handles YouTube ads to imitate a human user.
-        """
-        rec_elems = self.browser.find_elements_by_xpath("//a[@class='yt-simple-endpoint style-scope ytd-compact-video-renderer']")
-        recs = []
-        for i in range(self.n_splits):
-            try:
-                video_id = rec_elems[i].get_attribute('href').split('?v=')[1]
-                recs.append(video_id)
-            except:
-                if self.verbose == 2:
-                    print("Malformed content, could not get recommendation")
-
-        return recs
-
-    def skip_ads(self):
-        """
-        Selenium only. Handles YouTube ads to imitate a human user
-
-        """
-        # check whether video is skippable; if so, wait until skip button appears and click it
-        try:
-            preskipbutton = self.browser.find_element_by_xpath("//div[contains(@id, 'preskip-component')]")
-            skipbutton = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-ad-skip-button ytp-button']")))
-            skipbutton.click()
-            return
-        except NoSuchElementException:
-            pass
-        # if video has an unskippable ad wait for it to go away
-        try:
-            wait.until(element_does_not_exist((By.XPATH, "//span[@class='ytp-ad-preview-container']")))
-            return
-        # do nothing if there is no ad
-        except TimeoutException:
-            return
-
-
     def get_recommendations(self, video_id, depth):
         """
         Scrapes the recommendations corresponding to video_id. Split
@@ -232,38 +271,20 @@ class YoutubeFollower():
 
         url = "http://youtube.com/watch?v={}".format(video_id)
 
-        if self.driver == 'html':
-            while True:
-                try:
-                    html = urlopen(url)
-                    break
-                except:
-                    time.sleep(1)
-            for _ in range(10):
-                soup = BeautifulSoup(html, "lxml")
-                recs = self.parse_soup(soup)
-                if len(recs) == self.n_splits and not self.sample:
-                    break
-            else:
-                if self.verbose >= 1:
-                    print("Could not get recommendations for {}".format(video_id))
-
-        elif self.driver == 'selenium':
-            while True:
-                try:
-                    self.browser.get(url)
-                    break
-                except:
-                    time.sleep(1)
-            # press play on the video if possible
-            wait = WebDriverWait(self.browser, 30)
+        while True:
             try:
-                wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-play-button ytp-button']"))).click()
-            except TimeoutException:
-                pass
-            #self.skip_ads()
-            time.sleep(10)  # watch some of the video
-            recs = self.parse_page()
+                html = urlopen(url)
+                break
+            except:
+                time.sleep(1)
+        for _ in range(10):
+            soup = BeautifulSoup(html, "lxml")
+            recs = self.parse_soup(soup)
+            if len(recs) == self.n_splits and not self.sample:
+                break
+        else:
+            if self.verbose >= 1:
+                print("Could not get recommendations for {}".format(video_id))
 
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
@@ -300,7 +321,10 @@ class YoutubeFollower():
                 if self.verbose == 2:
                     print("\tTree at depth {}".format(depth))
             current_video = queue.pop(0)
-            recs = self.get_recommendations(current_video, depth)
+            if self.driver == 'selenium':
+                recs = self.get_recommendations_selenium(current_video, depth)
+            else:
+                recs = self.get_recommendations(current_video, depth)
             for video_id in recs:
                 if video_id in self.search_info:
                     if self.verbose == 2:
