@@ -69,7 +69,6 @@ category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
 
 # search info dataframe
 read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
-  select(-recommendations) %>%
   mutate(search = stringr::str_replace_all(search, ' ', '_')) -> search_info
   
 ```
@@ -102,9 +101,40 @@ n_vids_by_depth %>%
 
 ```
 
+Take a look at number of recommendations we're getting. Before we start sampling we aren't getting a full number of recommendations for ~60% of our splits. 
 
+```{r}
+get_n_recs <- function(rec_str) {
+  rec_str <- str_replace_all(rec_str, "[\\[\\]\\s']", '')
+  if (rec_str == "") {
+    return(0)
+  } else {
+    return(length(str_split(rec_str, ',', simplify = TRUE)))
+  }
+}
 
+search_info %>%
+  mutate(n_recs = sapply(recommendations, get_n_recs)) %>%
+  dplyr::filter(depth <= params$const_depth) %>%
+  count(n_recs) %>%
+  mutate(freq = n / sum(n)) %>%
+  ggplot(aes(n_recs, freq)) + 
+  geom_col() 
 
+```
+
+How about after sampling?
+
+```{r}
+search_info %>%
+  mutate(n_recs = sapply(recommendations, get_n_recs)) %>%
+  dplyr::filter(depth > params$const_depth) %>%
+  count(n_recs) %>%
+  mutate(freq = n / sum(n)) %>%
+  ggplot(aes(n_recs, freq)) + 
+  geom_col() 
+
+```
 
 
 
