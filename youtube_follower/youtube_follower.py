@@ -222,31 +222,17 @@ class YoutubeFollower():
         """
 
         recs = []
-        for video_list in soup.findAll('ul', {'class': 'video-list'}):
-            # try getting the "up next" video 
+        related = soup.findAll('li', {'class': re.compile('related-list-item')})
+        for item in related:
             try:
-                rec_id = video_list.find('a')['href']
+                rec_id = item.find('a')['href'].replace('/watch?v=', '').split('&')[0]
                 recs.append(rec_id)
-                upnext = True
             except:
                 if self.verbose == 2:
-                    print('WARNING Could not get up next recommendation.')
-                upnext = False
+                    print("Could not get a recommendation")
+            if len(recs) == self.n_splits:
+                break
 
-            start_ix = 1 if upnext else 0
-            for i in range(start_ix, self.n_splits):
-                try:
-                    rec_id = video_list.contents[i].\
-                             find('a', {'href': re.compile('^/watch')})['href'].\
-                             replace('/watch?v=', '')
-                    recs.append(rec_id)
-                except (AttributeError, TypeError) as e:
-                    if self.verbose == 2:
-                        print('WARNING Could not get recommendation.')
-
-        # clean up the video ids
-        for ix, rec in enumerate(recs):
-            recs[ix] = rec.replace('/watch?v=', '').split('&')[0]
         return recs
 
 
@@ -280,11 +266,11 @@ class YoutubeFollower():
         for _ in range(10):
             soup = BeautifulSoup(html, "lxml")
             recs = self.parse_soup(soup)
-            if len(recs) == self.n_splits and not self.sample:
+            if len(recs) == self.n_splits:
                 break
         else:
             if self.verbose >= 1:
-                print("Could not get recommendations for {}".format(video_id))
+                print("Could not all recommendations for {}".format(video_id))
 
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
