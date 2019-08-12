@@ -9,6 +9,7 @@ params:
   depth: 15
   n_splits: 3
   const_depth: 4
+  date: '2019-08-11'
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
@@ -47,7 +48,7 @@ library(texreg)
 ```
 
 ---
-title: "Sampling Exploration"
+title: "Sampling Exploration for `r params$date` Crawl"
 ---
 
 In the new scraper we start uniformly sampling from the recommended videos so we are following one recommendation in expectation. Specifically, if at each node we follow $n$ recommendations, past our critical depth we follow each of the $n$ recommendations with probability $\frac{1}{n}$. The goal is to approach something resembling a stationary distribution (w.r.t. features of interest) without the exponential growth in number of videos at each depth. 
@@ -70,6 +71,23 @@ category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
 # search info dataframe
 read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
   mutate(search = stringr::str_replace_all(search, ' ', '_')) -> search_info
+
+# deal with python-formatted lists
+format_recs <- function(rec_str) {
+  if (rec_str == "[]") {
+    return(NA)
+  }
+  rec_str <- str_replace_all(rec_str, "[\\[\\]\\s']", '')
+  return(strsplit(rec_str, ','))
+}
+
+search_info %>%
+  mutate_at("recommendations", format_recs) %>%
+  mutate(n_recs = sapply(recommendations, length)) -> search_info
+
+if (!is.null(params$date)) {
+  search_info <- filter(search_info, scrape_date == params$date)
+}
   
 ```
 
@@ -104,18 +122,8 @@ n_vids_by_depth %>%
 Take a look at number of recommendations we're getting. Before we start sampling we aren't getting a full number of recommendations for ~60% of our splits. 
 
 ```{r}
-get_n_recs <- function(rec_str) {
-  rec_str <- str_replace_all(rec_str, "[\\[\\]\\s']", '')
-  if (rec_str == "") {
-    return(0)
-  } else {
-    return(length(str_split(rec_str, ',', simplify = TRUE)))
-  }
-}
-
 search_info %>%
-  mutate(n_recs = sapply(recommendations, get_n_recs)) %>%
-  dplyr::filter(depth <= params$const_depth) %>%
+  filter(depth <= params$const_depth) %>%
   count(n_recs) %>%
   mutate(freq = n / sum(n)) %>%
   ggplot(aes(n_recs, freq)) + 
@@ -127,8 +135,7 @@ How about after sampling?
 
 ```{r}
 search_info %>%
-  mutate(n_recs = sapply(recommendations, get_n_recs)) %>%
-  dplyr::filter(depth > params$const_depth) %>%
+  filter(depth > params$const_depth) %>%
   count(n_recs) %>%
   mutate(freq = n / sum(n)) %>%
   ggplot(aes(n_recs, freq)) + 
@@ -136,7 +143,20 @@ search_info %>%
 
 ```
 
+How many of our trees are even making it to the max depth?
 
+```{r}
+search_info %>%
+  distinct(root_video, depth) %>%
+  count(depth) %>%
+  mutate(p = n / n[which.min(depth)]) %>%
+  ggplot(aes(depth, p)) +
+  geom_line() +
+  scale_x_continuous(breaks=c(0:15)) + 
+  ylim(c(0,1)) + 
+  ylab('Empirical survival probability')
+
+```
 
 
 
