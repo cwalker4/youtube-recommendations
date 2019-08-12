@@ -4,6 +4,7 @@ import json
 import time
 from datetime import date
 import os
+import sys
 
 import numpy as np
 from urllib.request import urlopen
@@ -51,13 +52,25 @@ class YoutubeFollower():
         if self.driver == 'selenium':
             self.browser = webdriver.Firefox()
 
+        # set up logger
+        log_opts = [logging.ERROR, logging.INFO, logging.DEBUG]
+        self.logger = logging.getLogger('youtube-follower')
+        self.logger.setLevel(logging.DEBUG)
+        # stream handler
+        ch = logging.StreamHandler()
+        ch.setLevel(log_opts[self.verbose])
+        # format
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        ch.setFormatter(formatter)
+        self.logger.addHandler(ch)
+
         # create the out directory if it doesn't already exist. Further, pull in
         # video info from previous crawls to minimize API abuse. Initialize from
         # scratch if not.
         if os.path.exists(self.outdir):
             video_info_path = os.path.join(self.outdir, 'video_info.json')
             if os.path.exists(video_info_path):
-                logging.info('Existing video info found in {}; loading'.format(video_info_path))
+                self.logger.info('Existing video info found in {}; loading'.format(video_info_path))
                 with open(video_info_path) as f:
                     self.video_info = json.load(f)
             else:
@@ -82,8 +95,6 @@ class YoutubeFollower():
             params_dict['sample'] = self.sample
             params_dict['const_depth'] = self.const_depth
 
-        os.makedirs(crawl_outdir)
-
         with open(os.path.join(self.outdir, 'video_info.json'), 'w') as f:
             json.dump(self.video_info, f)
 
@@ -98,17 +109,17 @@ class YoutubeFollower():
         """
         Fills the video info dictionary with video data
         """
-        logging.info("Getting video metadata")
+        self.logger.info("Getting video metadata")
         # only get metadata for videos we haven't seen before
         video_ids = set(self.search_info.keys())
         video_ids = list(video_ids.difference(set(self.video_info.keys())))
         metadata = utils.get_metadata(video_ids)
 
         for video_id in video_ids:
-            logging.debug("Logging info for {}".format(video_id))
+            self.logger.debug("Logging info for {}".format(video_id))
             video_data = metadata.get(video_id)
             if not video_data:
-                logging.warning("Could not get metadata for {}".format(video_id))
+                self.logger.warning("Could not get metadata for {}".format(video_id))
                 continue
 
             self.video_info[video_id] = {'views': video_data['views'],
@@ -139,7 +150,7 @@ class YoutubeFollower():
                 video_id = rec_elems[i].get_attribute('href').split('?v=')[1]
                 recs.append(video_id)
             except:
-                logging.warning("Malformed content, could not get recommendation")
+                self.logger.warning("Malformed content, could not get recommendation")
 
         return recs
 
@@ -199,7 +210,7 @@ class YoutubeFollower():
 
         self.search_info[video_id] = {'recommendations': list(recs),
                                        'depth': depth}
-        logging.debug("Recommendations for video {}: {}".format(video_id, recs))
+        self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
         return recs
 
 
@@ -221,10 +232,10 @@ class YoutubeFollower():
                 rec_id = item.find('a')['href'].replace('/watch?v=', '').split('&')[0]
                 recs.append(rec_id)
             except:
-                logging.warning("Could not get a recommendation")
+                e = sys.exc_info()[0]
+                self.logger.warning("Error in getting recommendation: {}".format(e))
             if len(recs) == self.n_splits:
                 break
-
         return recs
 
 
@@ -247,21 +258,25 @@ class YoutubeFollower():
                                            'depth': depth}
             return []
 
+        self.logger.debug("Getting recommendations for {}".format(video_id))
+
         url = "http://youtube.com/watch?v={}".format(video_id)
 
-        while True:
-            try:
-                html = urlopen(url)
-                break
-            except:
-                time.sleep(1)
         for _ in range(10):
+            while True:
+                try:
+                    html = urlopen(url)
+                    break
+                except:
+                    e = sys.exc_info()[0]
+                    self.logger.warning("Error getting html: {}".format(e))
+                    time.sleep(1)
             soup = BeautifulSoup(html, "lxml")
             recs = self.parse_soup(soup)
             if len(recs) == self.n_splits:
                 break
         else:
-            logging.warning("Could not get all recommendations for {}".format(video_id))
+            self.logger.warning("Could not get all recommendations for {}".format(video_id))
 
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
@@ -270,7 +285,7 @@ class YoutubeFollower():
 
         self.search_info[video_id] = {'recommendations': list(recs),
                                        'depth': depth}
-        logging.debug("Recommendations for video {}: {}".format(video_id, recs))
+        self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
         return recs
 
     def get_recommendation_tree(self, seed):
@@ -294,7 +309,7 @@ class YoutubeFollower():
                 queue = inactive_queue
                 inactive_queue = []
                 depth += 1
-                logging.debug("Tree at depth {}".format(depth))
+                self.logger.debug("Tree at depth {}".format(depth))
             current_video = queue.pop(0)
             if self.driver == 'selenium':
                 recs = self.get_recommendations_selenium(current_video, depth)
@@ -307,6 +322,7 @@ class YoutubeFollower():
 
 
     def run(self, video_id):
+        # some safety checks and directory management
         if not utils.video_exists(video_id):
             print('Video {} is not available'.format(video_id))
             return
@@ -319,14 +335,19 @@ class YoutubeFollower():
         if os.path.exists(crawl_outdir):
             print('Tree rooted at video {} already exists.'.format(video_id))
             return
+        os.makedirs(crawl_outdir)
 
-        # set up logger
-        log_opts = [logging.ERROR, logging.INFO, logging.DEBUG]
-        logging.basicConfig(filename=os.path.join(crawl_outdir, '{}.log'.format(video_id)))
-        logging.getLogger().setLevel(log_opts[self.verbose])
+        # set up logger to save to out directory
+        fh = logging.FileHandler(os.path.join(crawl_outdir, '{}.log'.format(video_id)))
+        fh.setLevel(logging.DEBUG)
+        # format
+        formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
+        fh.setFormatter(formatter)
+        self.logger.addHandler(fh)
 
-        logging.info("Starting crawl from root video {}".format(video_id))
-        logging.info('Results will be saved to {}'.format(crawl_outdir))
+        # start running
+        self.logger.info("Starting crawl from root video {}".format(video_id))
+        self.logger.info('Results will be saved to {}'.format(crawl_outdir))
         self.get_recommendation_tree(video_id)
         if self.driver == 'selenium':
             self.browser.close()
