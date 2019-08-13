@@ -354,5 +354,10 @@ class YoutubeFollower():
         self.populate_info()
         self.save_results(crawl_outdir)
 
+        # shutdown the logger
+        for handler in self.logger.handlers:
+            handler.close()
+            logger.removeHandler(handler)
+
 
 
