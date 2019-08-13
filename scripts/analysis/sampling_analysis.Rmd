@@ -9,7 +9,7 @@ params:
   depth: 15
   n_splits: 3
   const_depth: 4
-  date: '2019-08-11'
+  date: '2019-08-12'
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
@@ -91,7 +91,7 @@ if (!is.null(params$date)) {
   
 ```
 
-Let's take a look at the number of videos at each depth, averaged across all our trees. The first concerning thing to note is that we are visiting far fewer videos than expected, based on our search criteria. 
+Let's take a look at the number of videos at each depth, averaged across all our trees. The first concerning thing to note is that we are visiting far fewer videos than expected, based on our search criteria.
 
 ```{r vids_per_depth}
 expected_nvids <- function(depth, n_splits, const_depth) {
@@ -107,6 +107,7 @@ expected_n <- expected_nvids(params$depth, params$n_splits, params$const_depth)
 search_info %>%
   group_by(search, depth) %>%
   tally() %>%
+  ungroup() %>%
   group_by(depth) %>%
   summarise(n = mean(n)) -> n_vids_by_depth
 
@@ -119,27 +120,35 @@ n_vids_by_depth %>%
 
 ```
 
-Take a look at number of recommendations we're getting. Before we start sampling we aren't getting a full number of recommendations for ~60% of our splits. 
+This is not necessarily because our recommendation scraper isn't working - we don't follow a recommendation if we've seen it before. Taking a look at number of recommendations we're getting, it appears that this is the case. Our scraper is fine, but the rule of not following videos we have seen before  
 
 ```{r}
 search_info %>%
-  filter(depth <= params$const_depth) %>%
+  filter(depth < params$const_depth) %>%
   count(n_recs) %>%
-  mutate(freq = n / sum(n)) %>%
+  mutate(freq = n / sum(n),
+         n_recs = factor(n_recs, levels = c(0:3))) %>%
   ggplot(aes(n_recs, freq)) + 
-  geom_col() 
+  geom_col() +
+  scale_x_discrete(breaks=c(0:3), drop = FALSE)
 
 ```
 
-How about after sampling?
+How about after sampling? Looks like things are lining up as expected. 
 
 ```{r}
+ex_freq <- dbinom(c(0:params$n_splits), size=params$n_splits, prob=1/params$n_splits)
 search_info %>%
-  filter(depth > params$const_depth) %>%
+  filter(depth >= params$const_depth) %>%
   count(n_recs) %>%
-  mutate(freq = n / sum(n)) %>%
-  ggplot(aes(n_recs, freq)) + 
-  geom_col() 
+  mutate(freq = n / sum(n),
+         ex_freq = ex_freq) %>%
+  select(-n) %>%
+  gather(stat, val, -n_recs) %>%
+  ggplot(aes(n_recs, val, fill = stat)) + 
+  geom_col(position = 'dodge') +
+  ylab("Frequency") +
+  xlab("Number of recommendations")
 
 ```
 

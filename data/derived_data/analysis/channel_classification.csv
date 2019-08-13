@@ -1,11 +1,14 @@
 channel,leaning
 bbc,L
+bloomberg,R
 business insider,C
 c-span,L
 cbs,R
+chicago tribune,C
 cnbc,C
 cnn,L
 daily mail,R
+financial times,R
 fox,R
 fusion,R
 kqed,C
@@ -18,8 +21,10 @@ newsy,R
 npr,L
 pbs,L
 pbs newshour,C
+propublica,C
 tallahassee democrat,C
 the atlantic,L
+the economist,R
 the guardian,L
 the hill,R
 the new yorker,L
@@ -29,9 +34,12 @@ vice,L
 vox,L
 wall street journal,R
 washington post,L
+1 news,R
 24 news,L
+9news,R
 a&e,C
 abc news,R
+abc10,C
 abc11,C
 abp news,R
 abs-cbn news,L
@@ -41,7 +49,9 @@ associated press,L
 ava,C
 bbc news,R
 belleville news-democrat,L
+big think,L
 billings gazette,C
+brat,L
 casper star-tribune,L
 cbc,R
 cbc news,R
@@ -55,10 +65,12 @@ cna,R
 cut,R
 db,C
 dd news,R
+defense news,L
 dw news,C
 e4,C
 ed,C
 el pais,R
+epic,L
 espn,C
 faz,C
 fox news,R
@@ -66,17 +78,23 @@ gc,C
 global news,R
 gnn,R
 hbo,C
+hln,R
 hooverinstitution,C
 htn,R
+idj4,R
 ign,R
 india today,L
 inside edition,R
 itv,C
+itv news,C
+ivy,C
 k s,R
 kam,R
+kansas city star,R
 kkb,R
 kto,R
 logan,R
+meriam,R
 miracle,C
 mlb,L
 mpr news,C
@@ -84,16 +102,21 @@ mtv,R
 mw,C
 nba,C
 nbc news,R
+nesn,R
+news.com.au,R
 news24,L
 nfl,R
+nick,L
 nowthis news,R
 obc news,R
 ogb,C
 own,R
+ping,R
 quarks,C
 rattler,R
 reasontv,R
 republic world,C
+rise,L
 rudy,R
 salty,L
 sky news,L
@@ -104,10 +127,19 @@ tedxyouth,R
 the daily wire,R
 the feed,L
 the quint,C
+the root,R
+the state,R
 the straits times,C
+the verge,R
 the weekly,L
+them,L
+thoughty2,L
 time life,R
+toronto star,R
 tps,C
+trt world,R
+tsn,R
+tti,R
 tvo,C
 vice news,R
 vn24,L
