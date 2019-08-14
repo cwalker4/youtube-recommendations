@@ -357,7 +357,7 @@ class YoutubeFollower():
         # shutdown the logger
         for handler in self.logger.handlers:
             handler.close()
-            logger.removeHandler(handler)
+            self.logger.removeHandler(handler)
 
 
 
