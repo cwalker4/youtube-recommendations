@@ -45,6 +45,8 @@ knitr::knit_hooks$set(inline = function(x) {
 })
 
 library(texreg)
+
+source(here('scripts/analysis/utils.R'))
 ```
 
 ---
@@ -70,20 +72,9 @@ category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
 
 # search info dataframe
 read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
-  mutate(search = stringr::str_replace_all(search, ' ', '_')) -> search_info
-
-# deal with python-formatted lists
-format_recs <- function(rec_str) {
-  if (rec_str == "[]") {
-    return(NA)
-  }
-  rec_str <- str_replace_all(rec_str, "[\\[\\]\\s']", '')
-  return(strsplit(rec_str, ','))
-}
-
-search_info %>%
-  mutate_at("recommendations", format_recs) %>%
-  mutate(n_recs = sapply(recommendations, length)) -> search_info
+  mutate(search = stringr::str_replace_all(search, ' ', '_'),
+         recommendations = sapply(recommendations, format_python_lists),
+         n_recs = sapply(recommendations, length)) -> search_info
 
 if (!is.null(params$date)) {
   search_info <- filter(search_info, scrape_date == params$date)
@@ -120,7 +111,7 @@ n_vids_by_depth %>%
 
 ```
 
-This is not necessarily because our recommendation scraper isn't working - we don't follow a recommendation if we've seen it before. Taking a look at number of recommendations we're getting, it appears that this is the case. Our scraper is fine, but the rule of not following videos we have seen before  
+This is not necessarily because our recommendation scraper isn't working - we don't follow a recommendation if we've seen it before. Taking a look at number of recommendations we're getting, it appears that this is the case. 
 
 ```{r}
 search_info %>%

@@ -4,6 +4,8 @@ output:
     df_print: paged
   pdf_document:
     number_sections: no
+params:
+  analysis_dir: 'analysis'
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE,
@@ -24,7 +26,6 @@ library(forcats)
 library(readr)
 
 library(kableExtra)
-
 library(gridExtra)
 
 library(ggplot2)
@@ -33,12 +34,13 @@ library(GGally)
 library(hrbrthemes)
 theme_set(theme_ipsum())
 library(atheylab.utils)
-
 knitr::knit_hooks$set(inline = function(x) {
   atheylab.utils::pretty_print_inline(x, decimals = 2)
 })
-
 library(texreg)
+
+source(here('scripts/analysis/utils.R'))
+
 ```
 
 ---
@@ -48,21 +50,31 @@ title: "Channel Classification Analysis"
 Our current method of classifying channels by political leaning is pretty rough: let's take a look at how many we are able to catch.
 
 ```{r data_import}
+indir <- 'data/derived_data'
+
 # read in the classification
-channel_classification <-  read_csv(here('data/derived_data/analysis_redo/channel_classification.csv'))
+channel_classification <-  read_csv(here(indir, params$analysis_dir, 'channel_classification.csv'))
 
 # get a list of all the channels we visited
-read_csv(here('data/derived_data/analysis_redo/video_info.csv')) %>%
+read_csv(here(indir, params$analysis_dir, 'video_info.csv')) %>%
   filter(!is.na(channel)) %>%
   mutate(channel = tolower(channel)) -> video_info
 
 video_info %>%
+  unite(channel, channel, channel_id, sep=";") %>%
   count(channel) %>%
+  separate(channel, c("channel_name", "channel_id"), sep = ";") %>%
   arrange(-n) -> video_channels
 
 # join them together
-video_channels %>%
-  full_join(channel_classification, by='channel') -> class_full
+video_channels <- full_join(video_channels, channel_classification, by = c('channel_name'='channel'))
+
+# bring in channel information
+read_csv(here(indir, params$analysis_dir, 'channel_info.csv')) %>%
+  mutate(categories = sapply(categories, format_python_lists)) -> channel_info
+
+# join channel info into the counts
+class_full <- left_join(video_channels, channel_info, by = 'channel_id')
 
 ```
 
@@ -109,6 +121,62 @@ summ_tbl_alt %>%
   geom_col(aes('', share, fill = leaning)) + 
   scale_fill_manual(values = c("purple", "blue", "red", "gray")) + 
   ggtitle('Channel Classification Share Weighted by Video Count')
+
+```
+
+Let's take a look at the characteristics of our most-visited channels. Want to know: what do the most-visited channels look like? First: what's the correspondence between visits and number of views/subscribers/videos? Regression line plotted in blue.
+
+```{r}
+class_full %>%
+  select(channel_id, n, starts_with("n_")) %>%
+  gather(stat, val, -channel_id, -n) %>%
+  ggplot(aes(n, val)) +
+  geom_point() +
+  geom_smooth(method="lm") +
+  facet_wrap(~stat, ncol = 2, scales = "free") + 
+  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) + 
+  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  xlab("log(Number of visits)") + 
+  ylab("log(statistic)")
+
+```
+
+Distribution of these statistics by leaning of the channel:
+
+```{r}
+class_full %>%
+  mutate(leaning = replace_na(leaning, "NA"),
+         leaning = factor(leaning, levels = c("L", "C", "R", "NA"), ordered = TRUE)) %>%
+  select(leaning, starts_with("n_")) %>%
+  gather(stat, val, -leaning) %>%
+  ggplot(aes(val, fill = leaning, color = leaning)) + 
+  geom_density(alpha = 0.05) + 
+  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
+                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
+  facet_wrap(~stat, scales = "free", ncol = 2) +
+  scale_fill_manual(values = c("blue", "purple", "red", "gray")) +
+  scale_color_manual(values = c("blue", "purple", "red", "black")) +
+  xlab("log(statistic)")
+  
+```
+
+Look at the averages:
+
+```{r}
+class_full %>%
+  mutate(leaning = replace_na(leaning, "NA"),
+         leaning = factor(leaning, levels = c("L", "C", "R", "NA"), ordered = TRUE)) %>%
+  select(leaning, starts_with("n_")) %>%
+  gather(stat, val, -leaning) %>%
+  group_by(leaning, stat) %>%
+  summarise(val = mean(val, na.rm = TRUE)) %>%
+  ungroup() %>%
+  ggplot(aes(leaning, val, fill = leaning)) +
+  geom_col() +
+  scale_fill_manual(values = c("blue", "purple", "red", "gray")) +
+  facet_wrap(~stat, scales = "free")
 
 ```
 
