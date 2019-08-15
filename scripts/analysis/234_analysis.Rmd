@@ -276,7 +276,7 @@ degrees %>%
   select(video_id, in_deg) %>%
   top_n(10, in_deg) %>%
   arrange(-in_deg) %>%
-  left_join(video_info %>% select(video_id, title, channel), by = "video_id") %>%
+  left_join(video_info %>% select(video_id, title, channel_name), by = "video_id") %>%
   kable(format = "latex",
         caption = "Top Videos by In-Degree",
         col.names = c("Video", "In-Degree", "Title", "Channel"),
@@ -291,7 +291,7 @@ How do things vary with in-degree?
 ```{r}
 degrees %>%
   left_join(video_info, by = "video_id") %>%
-  select(-category, -channel, -description, -postdate, -title, -out_deg) %>%
+  select(-category, -channel_name, -description, -postdate, -title, -out_deg) %>%
   gather(stat, val, -c("video_id", "in_deg")) %>%
   filter(!is.na(val)) -> deg_stats_long
   
@@ -371,15 +371,15 @@ query_classifications <- bind_rows(l_queries, r_queries)
 # join the query and channel classifications into the search info dataframe
 if (!params$queries) {
   search_w_info %>%
-    mutate_at("channel", tolower) %>%
-    left_join(channel_leanings, by = 'channel') %>%
-    select(search, video_id, depth, channel, leaning) -> search_leanings
+    mutate_at("channel_name", tolower) %>%
+    left_join(channel_leanings, by = 'channel_name') %>%
+    select(search, video_id, depth, channel_name, leaning) -> search_leanings
 } else {
   search_w_info %>%
-    mutate_at("channel", tolower) %>%
-    left_join(channel_leanings, by = 'channel') %>%
+    mutate_at("channel_name", tolower) %>%
+    left_join(channel_leanings, by = 'channel_name') %>%
     left_join(query_classifications, by = 'query') %>%
-    select(search, query, video_id, depth, channel, leaning, query_leaning) -> search_leanings
+    select(search, query, video_id, depth, channel_name, leaning, query_leaning) -> search_leanings
 }
 
 
@@ -414,7 +414,7 @@ search_leanings %>%
   rename(n_videos = n) -> video_leaning_counts
 
 search_leanings %>%
-  distinct(channel, leaning) %>%
+  distinct(channel_name, leaning) %>%
   count(leaning) %>%
   mutate(frac_channels = n / sum(n)) %>%
   rename(n_channels = n) -> channel_leaning_counts
@@ -555,7 +555,7 @@ search_leanings %>%
   ungroup() %>%
   filter(seed_leaning %in% c('L', 'R')) %>%
   mutate(seed_leaning = factor(seed_leaning, levels=c('L', 'R'))) %>%
-  count(channel, seed_leaning, .drop = FALSE) -> leaning_visit_counts
+  count(channel_name, seed_leaning, .drop = FALSE) -> leaning_visit_counts
 
 # get the conservative and liberal shares for each channel
 leaning_visit_counts %>%
@@ -591,7 +591,7 @@ isolation_index
 
 ```{r}
 channel_leanings %>%
-  arrange(channel) %>%
+  arrange(channel_name) %>%
   kable(format = "latex",
         caption = "Channels and Classifications",
         booktabs = TRUE,
