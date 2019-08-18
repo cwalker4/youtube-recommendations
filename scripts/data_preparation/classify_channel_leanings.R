@@ -42,8 +42,8 @@ readr::read_csv(here::here(media_indir, 'mbfc_raw.csv')) %>%
 video_indir <- 'data/derived_data/analysis'
 
 readr::read_csv(here::here(video_indir, 'video_info.csv')) %>%
-  filter(!is.na(channel)) %>%
-  tidyr::unite(channel, channel, channel_id, sep=";") %>%
+  filter(!is.na(channel_name)) %>%
+  tidyr::unite(channel, channel_name, channel_id, sep=";") %>%
   count(channel) %>%
   tidyr::separate(channel, c("channel_name", "channel_id"), sep = ";") %>%
   arrange(-n) %>%
@@ -105,7 +105,7 @@ left_patterns <- c("the late show with stephen colbert", "lastweektonight", "sat
 center_patterns <- c("tedx talks", "theellenshow", "bloomberg markets and finance", "bbc news", "bbc america",
                      "cnn business", "bloomberg politics")
 
-right_patterns <- c("the hannity", "fox business", "fox 10 phoenix", "yaftv", "fox business",
+right_patterns <- c("the hannity", "fox business", "fox 10 phoenix", "yaftv",
                     "fox news insider", "american conservative union", "dinesh d'souza", "fox news shows",
                     "jordan b peterson", "sean hannity", "glenn beck", "ben shapiro", "ben shapiro thug life",
                     "social justice fails")
@@ -119,9 +119,13 @@ tibble(channel_name = center_patterns) %>%
 tibble(channel_name = right_patterns) %>%
   mutate(leaning = 'R') -> right_tbl
 
-bind_rows(channels_matched, left_tbl, center_tbl, right_tbl) -> channels_matched
+bind_rows(left_tbl, center_tbl, right_tbl) %>%
+  filter(!channel_name %in% channels_matched$channel_name) %>%
+  distinct(channel_name, leaning) -> manual_matches
 
-channels_matched %>%
+bind_rows(channels_matched, manual_matches) -> channels_matched_full
+
+channels_matched_full %>%
   left_join(select(video_channels, channel_name, channel_id), by = 'channel_name') %>%
   write_csv(here::here(video_indir, 'channel_classification.csv'))
 
