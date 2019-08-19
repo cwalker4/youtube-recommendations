@@ -127,6 +127,7 @@ bind_rows(channels_matched, manual_matches) -> channels_matched_full
 
 channels_matched_full %>%
   left_join(select(video_channels, channel_name, channel_id), by = 'channel_name') %>%
+  filter(!is.na(channel_id)) %>%
   write_csv(here::here(video_indir, 'channel_classification.csv'))
 
 
