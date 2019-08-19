@@ -90,6 +90,9 @@ read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -
   mutate(search = stringr::str_replace_all(search, ' ', '_')) %>%
   left_join(video_info %>% select(video_id, channel_id), by = 'video_id') -> search_info
 
+# topic id crosswalk
+topicid_crosswalk <- read_csv(here(indir, 'topicid_crosswalk.csv'))
+
 ################################################################################
 # get visit counts + merge everything together
 ################################################################################
@@ -204,6 +207,120 @@ summ_tbl_alt %>%
   scale_fill_manual(values = c("purple", "blue", "red", "gray")) + 
   facet_wrap(~classification) + 
   ggtitle('Channel Classification Share Weighted by Visit Count') 
+
+```
+
+## Politics Channels
+
+Here we repeat the same analysis, but filtering down to politics-related channels. First: what sorts of channels are labelled as "Politics" by YouTube? Top 20 politics channels we visited in our crawls, ranked by number of subscribers.
+
+```{r}
+# display some of the top politics-related channels
+channel_info %>%
+  unnest(categories) %>%
+  filter(categories == "Politics") %>%
+  select(`Channel Name` = name, `N Subscribers` = n_subscribers) %>%
+  top_n(20, `N Subscribers`) %>%
+  arrange(-`N Subscribers`)
+
+```
+
+Now we look at what share of politics-related channels we are classifying. The big-picture messsage is that our base classification works very well with the politics-related channels.
+
+```{r}
+# get the politics-related channels from the alternative and base classifications
+channel_classification_alt %>%
+  left_join(select(channel_class_alt_raw, channel_id, cat_id = channel_topic_ids),
+            by = 'channel_id') %>%
+  mutate(cat_id = sapply(cat_id, format_python_lists)) %>%
+  unnest(cat_id) %>%
+  distinct(channel_id, cat_id) %>%
+  left_join(topicid_crosswalk, by = c('cat_id'='id')) %>%
+  filter(label == "Politics") %>%
+  pull(channel_id) -> alt_politics_channels
+
+channel_classification %>%
+  left_join(select(channel_info, channel_id, categories), by = 'channel_id') %>%
+  unnest(categories) %>%
+  distinct(channel_id, leaning, categories) %>%
+  filter(categories == "Politics") %>%
+  pull(channel_id) -> base_politics_channels
+
+politics_channels <- c(alt_politics_channels, base_politics_channels)
+
+class_full %>%
+  filter(channel_id %in% politics_channels) %>%
+  count(classification, leaning) %>%
+  ggplot(aes(leaning, n, fill = leaning)) +
+  geom_col() +
+  facet_wrap(~classification) +
+  scale_fill_manual(values = c("blue", "purple", "red"))
+```
+
+
+```{r}
+# simple counts
+counts_w_info %>%
+  filter(channel_id %in% politics_channels) %>%
+  select(channel_id, starts_with("leaning")) %>%
+  gather(classification, leaning, -channel_id) %>%
+  mutate(leaning = ifelse(is.na(leaning), 'unclassified', leaning)) %>%
+  count(classification, leaning) %>%
+  mutate(classification = ifelse(classification == "leaning", "base", "alt")) %>%
+  group_by(classification) %>%
+  mutate(share = n / sum(n)) %>%
+  pivot_wider(names_from = classification, 
+              values_from = c(n, share), 
+              values_fill = list(n = 0, share = 0)) -> summ_tbl_politics
+
+summ_tbl_politics %>%
+  mutate_at(c("share_base", "share_alt"), scales::percent)
+
+```
+
+```{r}
+summ_tbl_politics %>%
+  select(leaning, starts_with("share")) %>%
+  pivot_longer(-leaning, names_to = "classification", values_to = "share") %>%
+  ggplot() + 
+  geom_col(aes('', share, fill = leaning)) + 
+  scale_fill_manual(values = c("purple", "blue", "red", "gray")) +
+  facet_wrap(~classification) +
+  ggtitle('Channel Classification Share (Politics)') 
+```
+
+```{r}
+counts_w_info %>%
+  filter(channel_id %in% politics_channels) %>%
+  select(channel_id, starts_with("leaning"), n_visits) %>%
+  pivot_longer(cols = starts_with("leaning"),
+               names_to = "classification",
+               values_to = "leaning") %>%
+  mutate(leaning = ifelse(is.na(leaning), 'unclassified', leaning)) %>%
+  group_by(classification, leaning) %>%
+  summarise(n = sum(n_visits, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate(classification = ifelse(classification == "leaning", "base", "alt")) %>%
+  group_by(classification) %>%
+  mutate(share = n / sum(n)) %>%
+  pivot_wider(names_from = classification, 
+              values_from = c(n, share), 
+              values_fill = list(n = 0, share = 0)) -> summ_tbl_alt_politics
+
+summ_tbl_alt_politics %>%
+  mutate_at(c("share_base", "share_alt"), scales::percent)
+
+```
+
+```{r}
+summ_tbl_alt_politics %>%
+  select(leaning, starts_with("share")) %>%
+  pivot_longer(-leaning, names_to = "classification", values_to = "share")  %>%
+  ggplot() + 
+  geom_col(aes('', share, fill = leaning)) + 
+  scale_fill_manual(values = c("purple", "blue", "red", "gray")) + 
+  facet_wrap(~classification) + 
+  ggtitle('Channel Classification Share Weighted by Visit Count (Politics)') 
 
 ```
 
@@ -368,6 +485,7 @@ counts_w_info %>%
   facet_wrap(~stat, scales = "free")
 
 ```
+
 
 ```{r, eval=FALSE}
 class <- read_csv(here(indir, params$analysis_dir, 'channel_classification_alt.csv'))
