@@ -50,9 +50,9 @@ title: "Channel Classification Analysis"
 In this document we take a closer look at our classification of channels by political leaning. We have two methods of classifying channels:
 
 1. Match channel names against bias ratings of news outlets. We use media bias ratings from three sources and construct a final bias classification via majority vote. 
-  - Media Bias Fact Check (www.mediabiasfactcheck.com): a leading classifier of the U.S. media landscape. Classifies outlets as extreme-left, left, center-left, center, center-right, right, or extreme right. We collapse this scale to left, center, and right.
-  - AdFontes (www.adfontesmedia.com): assigns media outlets polarity and factuality scores. Polarity is an integer rating where a negative score indicates a left-leaning outlet and a positive score indicates a right-leaning outlet. For our purposes we ignore the continuous scale and use the sign of the rating to classify outlets as left- or right-biased.
-  - AllSides (www.allsides.com): a news website that crowdsourced bias classifications of media outlets. Bias ratings are "based on blind surveys of people across the political spectrum, multi-partisan analysis and other in-depth analyses as well as tens of thousands of user ratings." Outlets are classified as left, center-left, center, right-center, or right. As with MBFC we collapse this scale to left, right, or center.
+    + Media Bias Fact Check (www.mediabiasfactcheck.com): a leading classifier of the U.S. media landscape. Classifies outlets as extreme-left, left, center-left, center, center-right, right, or extreme right. We collapse this scale to left, center, and right.
+    + AdFontes (www.adfontesmedia.com): assigns media outlets polarity and factuality scores. Polarity is an integer rating where a negative score indicates a left-leaning outlet and a positive score indicates a right-leaning outlet. For our purposes we ignore the continuous scale and use the sign of the rating to classify outlets as left- or right-biased.
+    + AllSides (www.allsides.com): a news website that crowdsourced bias classifications of media outlets. Bias ratings are "based on blind surveys of people across the political spectrum, multi-partisan analysis and other in-depth analyses as well as tens of thousands of user ratings." Outlets are classified as left, center-left, center, right-center, or right. As with MBFC we collapse this scale to left, right, or center.
 2. Use comments (@Jan has more details on this) as a proxy for audience, and classify channels as left or right based on the left- and right-share of their commenters. 
 
 ```{r data_import}
@@ -174,7 +174,7 @@ summ_tbl %>%
   ggtitle('Channel Classification Share') 
 ```
 
-We also repeat this exercise, but weighting each channel but the number of times we visited it in our crawls. Somewhat surprisingly the alternative classification looks worse with this metric. 
+Now we weigh each channel by the number of times we visited it in our crawls. Somewhat surprisingly the alternative classification does not improve with this metric.
 
 ```{r}
 counts_w_info %>%
@@ -212,20 +212,23 @@ summ_tbl_alt %>%
 
 ## Politics Channels
 
-Here we repeat the same analysis, but filtering down to politics-related channels. First: what sorts of channels are labelled as "Politics" by YouTube? Top 20 politics channels we visited in our crawls, ranked by number of subscribers.
+Here we repeat the same analysis, but filtering down to politics-related channels. First: what sorts of channels are labelled as "Politics" by YouTube? Top 20 politics channels we visited in our crawls, ranked by number of subscribers:
 
 ```{r}
 # display some of the top politics-related channels
 channel_info %>%
   unnest(categories) %>%
-  filter(categories == "Politics") %>%
+  filter(categories == "Politics") -> channel_info_politics
+
+channel_info_politics %>%
   select(`Channel Name` = name, `N Subscribers` = n_subscribers) %>%
   top_n(20, `N Subscribers`) %>%
-  arrange(-`N Subscribers`)
+  arrange(-`N Subscribers`) %>%
+  mutate_at("N Subscribers", ~format(.x, big.mark=','))
 
 ```
 
-Now we look at what share of politics-related channels we are classifying. The big-picture messsage is that our base classification works very well with the politics-related channels.
+We have `r format(nrow(channel_info_politics), big.mark=',')` channels in the "Politics" category. Now we look at what share of politics-related channels we are classifying. The big-picture messsage is that our base classification works better when we subset to political channels.
 
 ```{r}
 # get the politics-related channels from the alternative and base classifications
@@ -246,10 +249,10 @@ channel_classification %>%
   filter(categories == "Politics") %>%
   pull(channel_id) -> base_politics_channels
 
-politics_channels <- c(alt_politics_channels, base_politics_channels)
+politics_channels_class <- c(alt_politics_channels, base_politics_channels)
 
 class_full %>%
-  filter(channel_id %in% politics_channels) %>%
+  filter(channel_id %in% politics_channels_class) %>%
   count(classification, leaning) %>%
   ggplot(aes(leaning, n, fill = leaning)) +
   geom_col() +
@@ -261,7 +264,7 @@ class_full %>%
 ```{r}
 # simple counts
 counts_w_info %>%
-  filter(channel_id %in% politics_channels) %>%
+  filter(channel_id %in% channel_info_politics$channel_id) %>%
   select(channel_id, starts_with("leaning")) %>%
   gather(classification, leaning, -channel_id) %>%
   mutate(leaning = ifelse(is.na(leaning), 'unclassified', leaning)) %>%
@@ -291,7 +294,7 @@ summ_tbl_politics %>%
 
 ```{r}
 counts_w_info %>%
-  filter(channel_id %in% politics_channels) %>%
+  filter(channel_id %in% channel_info_politics$channel_id) %>%
   select(channel_id, starts_with("leaning"), n_visits) %>%
   pivot_longer(cols = starts_with("leaning"),
                names_to = "classification",
