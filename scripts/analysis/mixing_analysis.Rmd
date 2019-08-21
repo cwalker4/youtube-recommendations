@@ -9,10 +9,9 @@ params:
   depth: 15
   n_splits: 3
   const_depth: 4
-  date: '2019-08-11'
 ---
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE,
+knitr::opts_chunk$set(echo = TRUE,
                       cache = FALSE, 
                       warning = FALSE,
                       message = FALSE,
@@ -53,6 +52,152 @@ source(here('scripts/analysis/utils.R'))
 ---
 title: "Mixing Analysis"
 ---
+
+In this document we take a stab at looking at analyzing our data from a mixing perspective: the idea is that there is some stationary distribution on the recommendation graph, and it might be interesting to know how quickly we approach that stationary distribution. Even more interesting is if there is a difference in how quickly/slowly we approach the stationary distribution, depending on where we start. This could give us some notion of whether recommendations systematically point towards/away from certain types of content. 
+
+```{r}
+################################################################################
+# data import + tidying
+################################################################################
+
+indir <- 'data/derived_data'
+
+# raw video info
+read_csv(here::here(indir, params$analysis_dir, 'video_info.csv'), na = c("", -1)) %>%
+  mutate_at(vars(category, dislikes, likes, views, n_comments), as.integer) -> video_info
+
+# category id <-> category name crosswalk
+category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
+
+# search info dataframe
+read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
+  select(-recommendations) %>%
+  mutate(search = stringr::str_replace_all(search, ' ', '_')) -> search_info
+
+# add a variable for percent of likes
+video_info %>%
+  mutate(p_like = likes / (likes + dislikes)) -> video_info
+
+# import the channel-leaning information
+readr::read_csv(here::here(indir, params$analysis_dir, 'channel_classification.csv')) %>%
+  filter(!is.na(channel_id)) -> channel_classification
+
+# join together search and leaning information
+search_info %>%
+  left_join(video_info, by = 'video_id') %>%
+  left_join(channel_classification, by = 'channel_id') %>%
+  select(depth, root_video, video_id, channel_id, leaning) %>%
+  mutate(leaning = factor(leaning, levels = c("L", "C", "R")))-> search_w_leanings
+
+# add columns for the leaning of the root node
+search_w_leanings %>%
+  group_by(root_video) %>%
+  mutate(root_leaning = leaning[which.min(depth)]) %>%
+  ungroup() -> search_w_leanings
+
+```
+
+As a first pass, we'll make the (strong) assumption that the last five levels of our search trees characterize the stationary distribution for variables of interest - let's call this $Q(x)$, where $x$ is the variable. Then we can measure convergence to this distribution using KL divergence:
+
+$$
+D_{KL}(P_i || Q) = \sum_{x \in X}P_i(x) \log\bigg(\frac{P_i(x)}{Q(x)}\bigg)
+$$
+
+where $P_i(x)$ is the distribution of variable $x$ at depth $i$ of the tree. Let's do this first with political leaning. We have the following proportions of L/C/R leaning videos by depth:
+
+```{r}
+search_w_leanings %>%
+  filter(!is.na(leaning)) %>%
+  group_by(depth, leaning) %>%
+  summarise(n = n()) %>%
+  mutate(freq = n / sum(n)) %>%
+  ggplot(aes(depth, freq, fill = leaning)) +
+  geom_col() +
+  scale_fill_manual(values = c("blue", "purple", "red"))
+
+```
+
+There's not a ton of movement, and this figure doesn't really support the assumption that we reach the stationary distribution after depth 10, but let's continue for now. Let's take the last 5 levels and use those to construct $Q(x)$.
+
+```{r}
+search_w_leanings %>%
+  filter(!is.na(leaning),
+         depth >= 10) %>%
+  count(leaning) %>%
+  mutate(freq = n / sum(n)) -> q_x
+q_x
+```
+
+Cool. Now let's calculate the KL divergence between this distribution and the distribution of leanings for each depth of our crawls.
+
+
+```{r}
+# F'n to get the divergence between categorical dists p and q. No safety checks.
+kl_divergence <- function(p, q) {
+  sum(p * log(p/q))
+}
+
+# get the distributions for each depth
+search_w_leanings %>%
+  filter(!is.na(leaning)) %>%
+  count(depth, leaning) %>%
+  group_by(depth) %>%
+  mutate(freq = n / sum(n)) %>%
+  summarise(p_x = list(freq)) -> p_by_depth
+
+# calculate the divergence between each depth and q_x in the chunk above
+p_by_depth <- mutate(p_by_depth, divergence = map_dbl(p_x, ~kl_divergence(.x, q_x$freq))) 
+  
+# display
+select(p_by_depth, depth, divergence)
+
+```
+
+Not sure what's going on at depth 0, but generally a downward trend? 
+
+```{r}
+p_by_depth %>%
+  ggplot(aes(depth, divergence)) +
+  geom_line()
+
+```
+
+What happens if we break this up by leaning of the root node? Recall this figure, where it appears that the left-leaning videos converge faster to the stationary distribution than right-leaning videos.
+
+```{r}
+search_w_leanings %>%
+  filter(!is.na(leaning), !is.na(root_leaning)) %>%
+  count(root_leaning, depth, leaning) %>%
+  group_by(root_leaning, depth) %>%
+  mutate(freq = n / sum(n)) %>%
+  ggplot(aes(depth, freq, fill = leaning)) +
+  geom_col() + 
+  scale_fill_manual(values = c("blue", "purple", "red")) + 
+  facet_wrap(~root_leaning)
+
+```
+
+Let's take a closer look at what's going on with the KL divergence.
+
+```{r}
+# get the distributions for each depth
+search_w_leanings %>%
+  filter(!is.na(leaning), !is.na(root_leaning)) %>%
+  count(root_leaning, depth, leaning) %>%
+  group_by(root_leaning, depth) %>%
+  mutate(freq = n / sum(n)) %>%
+  summarise(p_x = list(freq)) -> p_by_depth_root
+
+# calculate the divergence between each depth and q_x in the chunk above
+p_by_depth_root <- mutate(p_by_depth_root, divergence = map_dbl(p_x, ~kl_divergence(.x, q_x$freq))) 
+
+# plot it
+p_by_depth_root %>%
+  ggplot(aes(depth, divergence, colour = root_leaning)) +
+  geom_line() + 
+  scale_color_manual(values = c("blue", "purple", "red"))
+
+```
 
 
 
