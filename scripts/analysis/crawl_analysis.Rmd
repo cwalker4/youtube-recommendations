@@ -12,7 +12,7 @@ params:
   date: '2019-08-12'
 ---
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE,
+knitr::opts_chunk$set(echo = FALSE,
                       cache = FALSE, 
                       warning = FALSE,
                       message = FALSE,
@@ -28,6 +28,7 @@ library(tidyr)
 library(stringr)
 library(forcats)
 library(readr)
+library(purrr)
 
 library(kableExtra)
 
@@ -50,11 +51,16 @@ source(here('scripts/analysis/utils.R'))
 ```
 
 ---
-title: "Sampling Exploration for `r params$date` Crawl"
+title: "`r params$date` Crawl"
 ---
 
-In the new scraper we start uniformly sampling from the recommended videos so we are following one recommendation in expectation. Specifically, if at each node we follow $n$ recommendations, past our critical depth we follow each of the $n$ recommendations with probability $\frac{1}{n}$. The goal is to approach something resembling a stationary distribution (w.r.t. features of interest) without the exponential growth in number of videos at each depth. 
+In this document we run some basic sanity checks on whether our crawler is behaving as expected. The parameters of this crawl were:
 
+```{r}
+tibble(parameter = c("Analysis Directory", "Max Depth", "Split Factor", "Sampling Depth"),
+       values = unlist(params)[1:4])
+
+```
 
 ```{r}
 ################################################################################
@@ -73,8 +79,8 @@ category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
 # search info dataframe
 read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
   mutate(search = stringr::str_replace_all(search, ' ', '_'),
-         recommendations = sapply(recommendations, format_python_lists),
-         n_recs = sapply(recommendations, length)) -> search_info
+         recommendations = sapply(recommendations, format_python_lists, USE.NAMES = FALSE),
+         n_recs = map_dbl(recommendations, ~ifelse(anyNA(.x), 0, length(.x)))) -> search_info
 
 if (!is.null(params$date)) {
   search_info <- filter(search_info, scrape_date == params$date)
@@ -82,7 +88,7 @@ if (!is.null(params$date)) {
   
 ```
 
-Let's take a look at the number of videos at each depth, averaged across all our trees. The first concerning thing to note is that we are visiting far fewer videos than expected, based on our search criteria.
+Let's take a look at the number of videos at each depth, averaged across all our trees. The first possibly concerning thing to note is that we are visiting far fewer videos than expected, based on our search criteria.
 
 ```{r vids_per_depth}
 expected_nvids <- function(depth, n_splits, const_depth) {
@@ -130,8 +136,9 @@ How about after sampling? Looks like things are lining up as expected.
 ```{r}
 ex_freq <- dbinom(c(0:params$n_splits), size=params$n_splits, prob=1/params$n_splits)
 search_info %>%
+  mutate(n_recs = factor(n_recs, levels = c(0:3))) %>%
   filter(depth >= params$const_depth) %>%
-  count(n_recs) %>%
+  count(n_recs, .drop = FALSE) %>%
   mutate(freq = n / sum(n),
          ex_freq = ex_freq) %>%
   select(-n) %>%
@@ -140,6 +147,19 @@ search_info %>%
   geom_col(position = 'dodge') +
   ylab("Frequency") +
   xlab("Number of recommendations")
+
+```
+
+A possibly more informative plot: average number of recommendations by depth. Recall that, since we are sampling after depth `r params$const_depth`, we want to be following one recommendation on average after that. Things look pretty good.
+
+```{r}
+search_info %>%
+  mutate(sampling = depth >= params$const_depth) %>%
+  group_by(depth, sampling) %>%
+  summarise_at("n_recs", mean) %>%
+  ggplot(aes(depth, n_recs, fill = sampling)) +
+  geom_col()
+  
 
 ```
 

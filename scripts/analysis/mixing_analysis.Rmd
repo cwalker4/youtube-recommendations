@@ -1,0 +1,61 @@
+---
+output:
+  html_document:
+    df_print: paged
+  pdf_document:
+    number_sections: no
+params:
+  analysis_dir: 'analysis'
+  depth: 15
+  n_splits: 3
+  const_depth: 4
+  date: '2019-08-11'
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      cache = FALSE, 
+                      warning = FALSE,
+                      message = FALSE,
+                      cache.lazy = FALSE,
+                      # force output to LaTeX (which forces the
+                      # imposition of fig.pos) and proper figure alignment
+                      fig.align = 'center',
+                      fig.pos = 'H')
+
+library(dplyr)
+library(here)
+library(tidyr)
+library(stringr)
+library(forcats)
+library(readr)
+library(purrr)
+
+library(kableExtra)
+
+library(gridExtra)
+
+library(ggplot2)
+extrafont::loadfonts(quiet = TRUE)
+library(GGally)
+library(hrbrthemes)
+theme_set(theme_ipsum())
+library(atheylab.utils)
+
+knitr::knit_hooks$set(inline = function(x) {
+  atheylab.utils::pretty_print_inline(x, decimals = 2)
+})
+
+library(texreg)
+
+source(here('scripts/analysis/utils.R'))
+```
+
+---
+title: "Mixing Analysis"
+---
+
+
+
+
+
+
