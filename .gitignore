@@ -116,3 +116,4 @@ data/scrape_results*
 
 # misc
 meeting_notes.md
+*.sqlite
