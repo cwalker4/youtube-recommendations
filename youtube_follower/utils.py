@@ -280,7 +280,7 @@ def dict_to_array(dictionary, order):
 	res = []
 	for key, data in dictionary.items():
 		entry = [key]
-		entry.extend([data[key] for key in order])
+		entry.extend([data[item] for item in order])
 		res.append(entry)
 	return res
 

@@ -56,7 +56,7 @@ def create_record(conn, table, data):
 	elif table == "recommendations":
 		sql = '''
 		INSERT INTO recommendations
-		(video_id, search_id, recommendations, depth)
+		(video_id, search_id, recommendation, depth)
 		VALUES (?,?,?,?)
 		'''
 	cur.executemany(sql, data)

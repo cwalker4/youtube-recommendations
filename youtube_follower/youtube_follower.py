@@ -84,8 +84,10 @@ class YoutubeFollower():
                          'n_videos', 'n_views', 'categories']
         channel_arr = utils.dict_to_array(self.channel_info, channel_order)
 
-        recs_order = ['search_id', 'recommendations', 'depth']
-        recs_arr = utils.dict_to_array(self.search_info, recs_order)
+        recs_arr = []
+        for video_id, data in self.search_info.items():
+            for rec in data['recommendations']:
+                recs_arr.append([video_id, self.search_id, rec, data['depth']])
 
         db_utils.create_record(self.db, "videos", video_arr)
         db_utils.create_record(self.db, "channels", channel_arr)
@@ -193,7 +195,7 @@ class YoutubeFollower():
             recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) < 1/len(recs)]
 
         self.search_info[video_id] = {'search_id': self.search_id,
-                                      'recommendations': str(list(recs)),
+                                      'recommendations': list(recs),
                                       'depth': depth}
         self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
         return recs
@@ -240,7 +242,7 @@ class YoutubeFollower():
         # If we're a leaf node, don't get recommendations
         if depth == self.depth:
             self.search_info[video_id] = {'search_id': self.search_id,
-                                          'recommendations': None,
+                                          'recommendations': [],
                                           'depth': depth}
             return []
 
@@ -270,7 +272,7 @@ class YoutubeFollower():
             recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) < 1/len(recs)]
 
         self.search_info[video_id] = {'search_id': self.search_id,
-                                      'recommendations': str(list(recs)),
+                                      'recommendations': list(recs),
                                       'depth': depth}
         self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
         return recs

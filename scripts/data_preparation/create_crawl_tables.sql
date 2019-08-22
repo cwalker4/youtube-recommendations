@@ -51,11 +51,10 @@ DROP TABLE IF EXISTS recommendations;
 CREATE TABLE recommendations (
   video_id text NOT NULL,
   search_id integer NOT NULL,
-  recommendations text,
+  recommendation text,
   depth integer,
-  PRIMARY KEY (video_id, search_id),
-  FOREIGN KEY (video_id)
-    REFERENCES videos (video_id),
+  FOREIGN KEY (video_id, recommendation)
+    REFERENCES videos (video_id, video_id),
   FOREIGN KEY (search_id)
     REFERENCES searches (search_id)
-) WITHOUT ROWID;
+);
