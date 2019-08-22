@@ -20,34 +20,41 @@ from selenium.webdriver.support.ui import WebDriverWait
 
 from . import utils
 from .utils import element_does_not_exist
+from . import db_utils
 
 
 class YoutubeFollower():
-    def __init__(self, outdir='scrape_results', query=None, n_splits=3, depth=5, text=False, verbose=1,
-     const_depth=5, sample=False, driver='html'):
+    def __init__(self, root_id, n_splits=3, depth=5, verbose=1, const_depth=5, 
+        sample=False, driver='html'):
         """
         INPUT:
-            query: (string) start query
+            root_id: (str) YouTube video_id of the root video
             n_splits: (int) splitting factor
             depth: (int) depth of tree
-            outdir: (string) where to save/look for results
-            verbose: (int) level of logger: 0 = error, 1 = info, 2 = debug
-            text: (bool) whether to get text data (comments)
+            verbose: (int) level of console logging: 0 = error, 1 = info, 2 = debug
             const_depth: (int) depth at which to stop branching and sample uniformly
                                from recommendations (toggled w/ sample parameter)
             sample: (bool) whether to sample from recommendations after const_depth splits
+            driver: (str) one of "html" or "selenium"
         """
 
-        self.query = query
+        self.root_id = root_id
         self.search_info = {}
+        self.video_info = {}
+        self.channel_info = {}
         self.n_splits = n_splits
         self.depth = depth
-        self.text = text
-        self.outdir = outdir
         self.const_depth = const_depth
         self.sample = sample
         self.driver = driver
         self.verbose = verbose
+        self.db = db_utils.create_connection('data/crawl.sqlite')
+
+        # write search info to the database and get the serialized search_id
+        searches_arr = [self.root_id, self.n_splits, self.depth, str(date.today()), 
+                        self.sample, self.const_depth]
+        self.search_id = db_utils.create_record(self.db, "searches", searches_arr)
+        self.db.commit()
 
         if self.driver == 'selenium':
             self.browser = webdriver.Firefox()
@@ -64,79 +71,57 @@ class YoutubeFollower():
         ch.setFormatter(formatter)
         self.logger.addHandler(ch)
 
-        # create the out directory if it doesn't already exist. Further, pull in
-        # video info from previous crawls to minimize API abuse. Initialize from
-        # scratch if not.
-        if os.path.exists(self.outdir):
-            video_info_path = os.path.join(self.outdir, 'video_info.json')
-            if os.path.exists(video_info_path):
-                self.logger.info('Existing video info found in {}; loading'.format(video_info_path))
-                with open(video_info_path) as f:
-                    self.video_info = json.load(f)
-            else:
-                self.video_info = {}
-        else:
-            os.makedirs(self.outdir)
-            self.video_info = {}
 
-
-    def save_results(self, crawl_outdir):
+    def save_results(self):
         """
-        Dumps video_info and search_info as jsons
-
-        INPUT:
-            out_dir: (str) directory to save the files
-
+        Writes recs and video information to the database
         """
-        params_dict = {'n_splits': self.n_splits,
-                       'depth': self.depth,
-                       'date': str(date.today())}
-        if self.sample:
-            params_dict['sample'] = self.sample
-            params_dict['const_depth'] = self.const_depth
+        videos_order = ['search_id', 'title', 'postdate', 'description', 'category',
+                        'channel_id', 'likes', 'dislikes', 'views', 'n_comments']
+        video_arr = utils.dict_to_array(self.video_info, videos_order)
 
-        with open(os.path.join(self.outdir, 'video_info.json'), 'w') as f:
-            json.dump(self.video_info, f)
+        channel_order = ['search_id', 'name', 'country', 'date_created', 'n_subscribers',
+                         'n_videos', 'n_views', 'categories']
+        channel_arr = utils.dict_to_array(self.channel_info, channel_order)
 
-        with open(os.path.join(crawl_outdir, 'search_info.json'), 'w') as f:
-            json.dump(self.search_info, f)
+        recs_order = ['search_id', 'recommendations', 'depth']
+        recs_arr = utils.dict_to_array(self.search_info, recs_order)
 
-        with open(os.path.join(crawl_outdir, 'params.json'), 'w') as f:
-            json.dump(params_dict, f)
+        db_utils.create_record(self.db, "videos", video_arr)
+        db_utils.create_record(self.db, "channels", channel_arr)
+        db_utils.create_record(self.db, "recommendations", recs_arr)
+        self.db.commit()
 
 
     def populate_info(self):
         """
-        Fills the video info dictionary with video data
+        Fills the video & channel info array with video / channel data
         """
-        self.logger.info("Getting video metadata")
-        # only get metadata for videos we haven't seen before
-        video_ids = set(self.search_info.keys())
-        video_ids = list(video_ids.difference(set(self.video_info.keys())))
+        # video information
+        self.logger.info("Getting batch video metadata")
+        video_ids = list(set(self.search_info.keys()))
         metadata = utils.get_metadata(video_ids)
-
         for video_id in video_ids:
             self.logger.debug("Logging info for {}".format(video_id))
             video_data = metadata.get(video_id)
             if not video_data:
                 self.logger.warning("Could not get metadata for {}".format(video_id))
                 continue
+            video_data['search_id'] = self.search_id
+            self.video_info[video_id] = video_data
 
-            self.video_info[video_id] = {'views': video_data['views'],
-                                         'likes': video_data['likes'],
-                                         'dislikes': video_data['dislikes'],
-                                         'description': video_data['description'],
-                                         'category': video_data['category_id'],
-                                         'postdate': video_data['date'],
-                                         'n_comments': video_data['n_comments'],
-                                         'channel': video_data['channel'],
-                                         'channel_id': video_data['channel_id'],
-                                         'title': video_data['title'],
-                                         'date': str(date.today())}
-            # Get text data if wanted
-            if self.text:
-                comments = utils.get_comments(video_id, max_results=20)
-                self.video_info[video_id]['comments'] = comments
+        # channel information
+        self.logger.info("Getting batch channel metadata")
+        channel_ids = list(set([vid['channel_id'] for vid in self.video_info.values()]))
+        metadata = utils.get_channel_metadata(channel_ids)
+        for channel_id in channel_ids:
+            self.logger.debug("Logging info for {}".format(channel_id))
+            channel_data = metadata.get(channel_id)
+            if not channel_data:
+                self.logger.warning("Could not get channel metadata for {}".format(channel_id))
+                continue
+            channel_data['search_id'] = self.search_id
+            self.channel_info[channel_id] = channel_data
 
 
     def parse_selenium(self):
@@ -151,7 +136,6 @@ class YoutubeFollower():
                 recs.append(video_id)
             except:
                 self.logger.warning("Malformed content, could not get recommendation")
-
         return recs
 
     def skip_ads(self):
@@ -208,8 +192,9 @@ class YoutubeFollower():
         if all([self.sample == True, depth >= self.const_depth, len(recs) != 0]):
             recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) < 1/len(recs)]
 
-        self.search_info[video_id] = {'recommendations': list(recs),
-                                       'depth': depth}
+        self.search_info[video_id] = {'search_id': self.search_id,
+                                      'recommendations': str(list(recs)),
+                                      'depth': depth}
         self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
         return recs
 
@@ -254,8 +239,9 @@ class YoutubeFollower():
 
         # If we're a leaf node, don't get recommendations
         if depth == self.depth:
-            self.search_info[video_id] = {'recommendations': [],
-                                           'depth': depth}
+            self.search_info[video_id] = {'search_id': self.search_id,
+                                          'recommendations': None,
+                                          'depth': depth}
             return []
 
         self.logger.debug("Getting recommendations for {}".format(video_id))
@@ -283,23 +269,22 @@ class YoutubeFollower():
         if all([self.sample == True, depth >= self.const_depth, len(recs) != 0]):
             recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) < 1/len(recs)]
 
-        self.search_info[video_id] = {'recommendations': list(recs),
-                                       'depth': depth}
+        self.search_info[video_id] = {'search_id': self.search_id,
+                                      'recommendations': str(list(recs)),
+                                      'depth': depth}
         self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
         return recs
 
-    def get_recommendation_tree(self, seed):
+    def get_recommendation_tree(self):
         """
         Builds the recommendation tree via BFS. Calls functions to
         populate video info and search info.
 
         INPUT:
-            seed: (str) video_id of tree root
             depth: (int) depth of tree
         """
-        queue = []
+        queue = [self.root_id]
         inactive_queue = []
-        queue.append(seed)
 
         depth = 0
         while depth <= self.depth:
@@ -321,24 +306,15 @@ class YoutubeFollower():
                 inactive_queue.append(video_id)
 
 
-    def run(self, video_id):
+    def run(self):
         # some safety checks and directory management
-        if not utils.video_exists(video_id):
-            print('Video {} is not available'.format(video_id))
+        if not utils.video_exists(self.root_id):
+            print('Video {} is not available'.format(self.root_id))
             return
 
-        if self.query is None:
-            crawl_outdir = os.path.join(self.outdir, video_id)
-        else:
-            crawl_outdir = os.path.join(self.outdir, '{}_{}'.format(self.query, video_id))
-
-        if os.path.exists(crawl_outdir):
-            print('Tree rooted at video {} already exists.'.format(video_id))
-            return
-        os.makedirs(crawl_outdir)
-
-        # set up logger to save to out directory
-        fh = logging.FileHandler(os.path.join(crawl_outdir, '{}.log'.format(video_id)))
+        # set up logger to save to the log folder
+        fh = logging.FileHandler(os.path.join('logs', 
+            '{}_{}.log'.format(self.root_id, str(date.today()))))
         fh.setLevel(logging.DEBUG)
         # format
         formatter = logging.Formatter("%(asctime)s [%(levelname)s] %(message)s")
@@ -346,18 +322,21 @@ class YoutubeFollower():
         self.logger.addHandler(fh)
 
         # start running
-        self.logger.info("Starting crawl from root video {}".format(video_id))
-        self.logger.info('Results will be saved to {}'.format(crawl_outdir))
-        self.get_recommendation_tree(video_id)
+        self.logger.info("Starting crawl from root video {}".format(self.root_id))
+        self.get_recommendation_tree()
         if self.driver == 'selenium':
             self.browser.close()
         self.populate_info()
-        self.save_results(crawl_outdir)
+        self.save_results()
 
         # shutdown the logger
         for handler in self.logger.handlers:
             handler.close()
             self.logger.removeHandler(handler)
+
+        # commit and close the cursor
+        self.db.commit()
+        self.db.close()
 
 
 
