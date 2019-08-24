@@ -250,31 +250,31 @@ class YoutubeFollower():
 
         url = "http://youtube.com/watch?v={}".format(video_id)
 
-        for _ in range(10):
+        for parser in ['lxml', 'html.parser', 'html5lib']:
             while True:
                 try:
                     html = urlopen(url)
-                    break
                 except:
                     e = sys.exc_info()[0]
                     self.logger.warning("Error getting html: {}".format(e))
                     time.sleep(1)
-            soup = BeautifulSoup(html, "lxml")
+            soup = BeautifulSoup(html, parser)
             recs = self.parse_soup(soup)
             if len(recs) == self.n_splits:
                 break
         else:
             self.logger.warning("Could not get all recommendations for {}".format(video_id))
 
+        self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
         if all([self.sample == True, depth >= self.const_depth, len(recs) != 0]):
             recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) < 1/len(recs)]
+            self.logger.debug("Sampled recommendations for video {}: {}".format(video_id, recs))
 
         self.search_info[video_id] = {'search_id': self.search_id,
                                       'recommendations': list(recs),
                                       'depth': depth}
-        self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
         return recs
 
     def get_recommendation_tree(self):
