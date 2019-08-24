@@ -6,11 +6,10 @@ root_videos = get_top_news_videos()
 
 for video_id in root_videos:
     yf = youtube_follower.YoutubeFollower(
-    		root_id=video_id,
-            n_splits=3,
-            depth=15,
-            const_depth=4,
-            sample=True,
-            outdir='data/scrape_results')
+    	    root_id=video_id,
+            n_splits=4,
+            depth=20,
+            const_depth=5,
+            sample=True)
     yf.run()
 
