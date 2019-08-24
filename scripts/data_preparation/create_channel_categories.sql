@@ -1,10 +1,10 @@
-DROP TABLE IF EXISTS channel_categories;
-CREATE TABLE channel_categories (
+DROP TABLE IF EXISTS yt_channel_categories;
+CREATE TABLE yt_channel_categories (
   category_id TEXT PRIMARY KEY,
   category_name TEXT
 );
 
-INSERT INTO channel_categories (category_id, category_name)
+INSERT INTO yt_channel_categories (category_id, category_name)
 VALUES
 ('/m/04rlf','Music (parent topic)'),
 ('/m/02mscn','Christian music'),

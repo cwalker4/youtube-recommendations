@@ -23,7 +23,7 @@ CREATE TABLE videos (
   dislikes integer,
   n_comments integer,
   description text,
-  category text,
+  category integer,
   PRIMARY KEY (video_id, search_id),
   FOREIGN KEY (search_id)
     REFERENCES searches (search_id)
@@ -40,8 +40,19 @@ CREATE TABLE channels (
   n_subscribers integer,
   n_videos integer,
   n_views integer,
-  categories text,
   PRIMARY KEY (channel_id, search_id),
+  FOREIGN KEY (search_id)
+    REFERENCES searches (search_id)
+);
+
+-- channel categories table
+DROP TABLE IF EXISTS channel_categories;
+CREATE TABLE channel_categories (
+  channel_id text NOT NULL,
+  search_id integer NOT NULL,
+  category text,
+  FOREIGN KEY (channel_id)
+    REFERENCES channels (channel_id),
   FOREIGN KEY (search_id)
     REFERENCES searches (search_id)
 );

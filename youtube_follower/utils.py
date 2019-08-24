@@ -194,7 +194,7 @@ def get_channel_metadata_batch(channel_ids):
 							  'n_subscribers': statistics.get('subscriberCount'),
 							  'n_videos': statistics.get('videoCount', None),
 							  'n_views': statistics.get('viewCount', None),
-							  'categories': str(categories)}
+							  'categories': categories}
 	return result
 	
 

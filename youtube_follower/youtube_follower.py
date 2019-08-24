@@ -81,8 +81,13 @@ class YoutubeFollower():
         video_arr = utils.dict_to_array(self.video_info, videos_order)
 
         channel_order = ['search_id', 'name', 'country', 'date_created', 'n_subscribers',
-                         'n_videos', 'n_views', 'categories']
+                         'n_videos', 'n_views']
         channel_arr = utils.dict_to_array(self.channel_info, channel_order)
+
+        channel_cats_arr = []
+        for channel_id, data in self.channel_info.items():
+            for category in data['categories']:
+                channel_cats_arr.append([channel_id, self.search_id, category])
 
         recs_arr = []
         for video_id, data in self.search_info.items():
@@ -91,6 +96,7 @@ class YoutubeFollower():
 
         db_utils.create_record(self.db, "videos", video_arr)
         db_utils.create_record(self.db, "channels", channel_arr)
+        db_utils.create_record(self.db, "channel_categories", channel_cats_arr)
         db_utils.create_record(self.db, "recommendations", recs_arr)
         self.db.commit()
 
@@ -250,15 +256,16 @@ class YoutubeFollower():
 
         url = "http://youtube.com/watch?v={}".format(video_id)
 
+        while True:
+            try:
+                html = urlopen(url)
+                break
+            except:
+                e = sys.exc_info()[0]
+                self.logger.warning("Error getting html: {}".format(e))
+                time.sleep(1)
+
         for parser in ['lxml', 'html.parser', 'html5lib']:
-            while True:
-                try:
-                    html = urlopen(url)
-                    break
-                except:
-                    e = sys.exc_info()[0]
-                    self.logger.warning("Error getting html: {}".format(e))
-                    time.sleep(1)
             soup = BeautifulSoup(html, parser)
             recs = self.parse_soup(soup)
             if len(recs) == self.n_splits:

@@ -50,14 +50,20 @@ def create_record(conn, table, data):
 		sql = '''
 		INSERT INTO channels
 		(channel_id, search_id, name, country, date_created, 
-		n_subscribers, n_videos, n_views, categories)
-		VALUES (?,?,?,?,?,?,?,?,?)
+		n_subscribers, n_videos, n_views)
+		VALUES (?,?,?,?,?,?,?,?)
 		'''
 	elif table == "recommendations":
 		sql = '''
 		INSERT INTO recommendations
 		(video_id, search_id, recommendation, depth)
 		VALUES (?,?,?,?)
+		'''
+	elif table == "channel_categories":
+		sql = '''
+		INSERT INTO channel_categories
+		(channel_id, search_id, category)
+		VALUES (?,?,?)
 		'''
 	cur.executemany(sql, data)
 
