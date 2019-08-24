@@ -254,6 +254,7 @@ class YoutubeFollower():
             while True:
                 try:
                     html = urlopen(url)
+                    break
                 except:
                     e = sys.exc_info()[0]
                     self.logger.warning("Error getting html: {}".format(e))
