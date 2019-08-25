@@ -86,6 +86,9 @@ class YoutubeFollower():
 
         channel_cats_arr = []
         for channel_id, data in self.channel_info.items():
+            if not data:
+                channel_cats_arr.append([channel_id, self.search_id, None])
+                continue
             for category in data['categories']:
                 channel_cats_arr.append([channel_id, self.search_id, category])
 
