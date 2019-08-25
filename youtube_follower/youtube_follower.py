@@ -259,21 +259,21 @@ class YoutubeFollower():
 
         url = "http://youtube.com/watch?v={}".format(video_id)
 
-        while True:
-            try:
-                html = urlopen(url)
-                break
-            except:
-                e = sys.exc_info()[0]
-                self.logger.warning("Error getting html: {}".format(e))
-                time.sleep(1)
-
         for parser in ['lxml', 'html.parser', 'html5lib']:
+            while True:
+                try:
+                    html = urlopen(url)
+                    break
+                except:
+                    e = sys.exc_info()[0]
+                    self.logger.warning("Error getting html: {}".format(e))
+                    time.sleep(1)
             soup = BeautifulSoup(html, parser)
             recs = self.parse_soup(soup)
             if len(recs) == self.n_splits:
+                self.logger.debug("Recommendations retrieved with parser {}".format(parser))
                 break
-        else:
+        if len(recs) != self.n_splits:
             self.logger.warning("Could not get all recommendations for {}".format(video_id))
 
         self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
