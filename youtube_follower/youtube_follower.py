@@ -24,7 +24,7 @@ from . import db_utils
 
 
 class YoutubeFollower():
-    def __init__(self, root_id, n_splits=3, depth=5, verbose=1, const_depth=5, 
+    def __init__(self, root_id, n_splits=3, depth=5, verbose=1, const_depth=5,
         sample=False, driver='html'):
         """
         INPUT:
@@ -51,7 +51,7 @@ class YoutubeFollower():
         self.db = db_utils.create_connection('data/crawl.sqlite')
 
         # write search info to the database and get the serialized search_id
-        searches_arr = [self.root_id, self.n_splits, self.depth, str(date.today()), 
+        searches_arr = [self.root_id, self.n_splits, self.depth, str(date.today()),
                         self.sample, self.const_depth]
         self.search_id = db_utils.create_record(self.db, "searches", searches_arr)
         self.db.commit()
@@ -86,7 +86,7 @@ class YoutubeFollower():
 
         channel_cats_arr = []
         for channel_id, data in self.channel_info.items():
-            if not data:
+            if not data['categories']:
                 channel_cats_arr.append([channel_id, self.search_id, None])
                 continue
             for category in data['categories']:
@@ -196,7 +196,7 @@ class YoutubeFollower():
             pass
         #self.skip_ads()
         time.sleep(10)  # watch some of the video
-        recs = self.parse_selenium()        
+        recs = self.parse_selenium()
 
         # If we're (a) sampling, and (b) at our point of critical depth,
         # hold onto recommendations uniformly at random
@@ -326,7 +326,7 @@ class YoutubeFollower():
             return
 
         # set up logger to save to the log folder
-        fh = logging.FileHandler(os.path.join('logs', 
+        fh = logging.FileHandler(os.path.join('logs',
             '{}_{}.log'.format(self.root_id, str(date.today()))))
         fh.setLevel(logging.DEBUG)
         # format
