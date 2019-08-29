@@ -94,6 +94,9 @@ class YoutubeFollower():
 
         recs_arr = []
         for video_id, data in self.search_info.items():
+            if not data['recommendations']:
+                recs_arr.append([video_id, self.search_id, None, data['depth']])
+                continue
             for rec in data['recommendations']:
                 recs_arr.append([video_id, self.search_id, rec, data['depth']])
 
