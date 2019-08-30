@@ -2,6 +2,7 @@ library(dplyr)
 library(readr)
 library(here)
 library(fuzzyjoin)
+library(RSQLite)
 
 ###############################################################################
 # Data import + standardizing
@@ -39,18 +40,15 @@ readr::read_csv(here::here(media_indir, 'mbfc_raw.csv')) %>%
 # Match scraped channels to leanings
 ###############################################################################
 
-video_indir <- 'data/derived_data/analysis'
-
-readr::read_csv(here::here(video_indir, 'video_info.csv')) %>%
-  filter(!is.na(channel_name)) %>%
-  tidyr::unite(channel, channel_name, channel_id, sep=";") %>%
-  count(channel) %>%
-  tidyr::separate(channel, c("channel_name", "channel_id"), sep = ";") %>%
-  arrange(-n) %>%
-  mutate_at("channel_name", tolower) -> video_channels
+sql <- "
+SELECT DISTINCT channel_id, LOWER(name) AS channel_name
+FROM channels
+"
+con = dbConnect(SQLite(), here('data/crawl.sqlite'))
+channels <- dbGetQuery(con, sql)
 
 # join all our sources together with exact string matches
-list(video_channels %>% select(-n), adfontes, mbfc, allsides) %>%
+list(channels, adfontes, mbfc, allsides) %>%
   purrr::reduce(~ left_join(.x, .y, by = 'channel_name')) -> channels_matched
 
 # take a majority vote of the three sources
@@ -63,9 +61,8 @@ channels_matched %>%
   summarise(leaning = leaning[which.max(n)]) -> channels_matched
 
 # try a stringdist join on the unmatched channels
-video_channels %>%
-  filter(!channel_name %in% channels_matched$channel_name) %>%
-  select(-n) -> channels_unmatched
+channels %>%
+  filter(!channel_name %in% channels_matched$channel_name) -> channels_unmatched
 
 list(mbfc, adfontes, allsides) %>%
   purrr::reduce(~ full_join(.x, .y, by = 'channel_name')) %>%
@@ -89,7 +86,7 @@ channels_matched %>%
 # update channels_unmatched and join in video counts
 channels_unmatched %>%
   filter(!channel_name %in% channels_matched$channel_name) %>%
-  left_join(video_channels, by = 'channel_name') -> channels_unmatched
+  left_join(channels, by = 'channel_name') -> channels_unmatched
 
 ###############################################################################
 # Manual channel matching
@@ -123,11 +120,12 @@ bind_rows(left_tbl, center_tbl, right_tbl) %>%
   filter(!channel_name %in% channels_matched$channel_name) %>%
   distinct(channel_name, leaning) -> manual_matches
 
-bind_rows(channels_matched, manual_matches) -> channels_matched_full
-
-channels_matched_full %>%
-  left_join(select(video_channels, channel_name, channel_id), by = 'channel_name') %>%
+bind_rows(channels_matched, manual_matches) %>%
+  left_join(channels, by = "channel_name") %>%
   filter(!is.na(channel_id)) %>%
-  write_csv(here::here(video_indir, 'channel_classification.csv'))
+  select(channel_id, leaning) -> channels_matched_full
+
+# write new results to the database
+dbWriteTable(con, "channel_leanings", channels_matched_full, overwrite = TRUE)
 
 
