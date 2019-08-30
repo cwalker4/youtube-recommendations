@@ -4,8 +4,6 @@ output:
     df_print: paged
   pdf_document:
     number_sections: no
-params:
-  analysis_dir: 'analysis'
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE,
@@ -24,6 +22,7 @@ library(tidyr)
 library(stringr)
 library(forcats)
 library(readr)
+library(RSQLite)
 
 library(kableExtra)
 library(gridExtra)
@@ -41,6 +40,8 @@ library(texreg)
 
 source(here('scripts/analysis/utils.R'))
 
+con <- RSQLite::dbConnect(SQLite(), here('data/crawl.sqlite'))
+
 ```
 
 ---
@@ -56,19 +57,16 @@ In this document we take a closer look at our classification of channels by poli
 2. Use comments (@Jan has more details on this) as a proxy for audience, and classify channels as left or right based on the left- and right-share of their commenters. 
 
 ```{r data_import}
-indir <- 'data/derived_data'
 
 ################################################################################
 # data import + tidying
 ################################################################################
 
 # read in the classification
-read_csv(here(indir, params$analysis_dir, 'channel_classification.csv')) %>%
-  select(channel_id, leaning) %>%
-  filter(!is.na(channel_id)) -> channel_classification
+channel_classification <- dbGetQuery(con, "SELECT * FROM channel_leanings WHERE channel_id NOT NULL")
 
 # read in the alternate classification and drop duplicate channel_id/leaning pairs
-channel_class_alt_raw <- read_csv(here(indir, params$analysis_dir, 'channel_classification_alt.csv')) 
+channel_class_alt_raw <- read_csv(here('data/derived_data/channel_classification_alt.csv')) 
 channel_class_alt_raw %>%
   select(channel_id, leaning_alt = leaning) %>%
   distinct(channel_id, leaning_alt) -> channel_classification_alt
@@ -78,79 +76,52 @@ channel_classification_alt %>%
   group_by(channel_id) %>%
   mutate(n = n()) %>%
   filter(n == 1) %>%
-  select(-n) -> channel_classification_alt
+  select(-n) %>%
+  ungroup() -> channel_classification_alt
 
-# get video information
-read_csv(here(indir, params$analysis_dir, 'video_info.csv')) %>%
-  filter(!is.na(channel_id)) -> video_info
+# get the number of times a video from each channel was recommended
+sql <- "
+SELECT channel_id, COUNT(*) AS n
+  FROM recommendations r
+LEFT JOIN videos v
+  ON r.recommendation=v.video_id
+  AND r.search_id=v.search_id
+WHERE channel_id NOT NULL
+GROUP BY channel_id
+ORDER BY n DESC
+"
+channel_counts <- dbGetQuery(con, sql)
 
-# import search info dataframe and join in channel from video_info
-read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
-  select(-recommendations) %>%
-  mutate(search = stringr::str_replace_all(search, ' ', '_')) %>%
-  left_join(video_info %>% select(video_id, channel_id), by = 'video_id') -> search_info
-
-# topic id crosswalk
-topicid_crosswalk <- read_csv(here(indir, 'topicid_crosswalk.csv'))
+# import channel information
+channel_info <- dbGetQuery(con, "SELECT * FROM channels")
 
 ################################################################################
-# get visit counts + merge everything together
+# merge everything together
 ################################################################################
-
-# bind together the two classifications
-channel_classification %>%
-  mutate(classification = "base") %>%
-  bind_rows(channel_classification_alt %>%
-              mutate(classification = "alt") %>%
-              rename(leaning = leaning_alt)) %>%
-  mutate(leaning = factor(leaning, levels = c("L", "C", "R"), ordered = TRUE)) -> class_full
-
-# get visit counts
-search_info %>%
-  count(channel_id) %>%
-  rename(n_visits = n) -> visit_counts
-
-# get video counts
-video_info %>%
-  count(channel_id) %>%
-  rename(n_videos_crawl = n) -> video_counts
 
 # join them together
-list(visit_counts, video_counts, channel_classification, channel_classification_alt) %>%
-  purrr::reduce(~left_join(.x, .y, by = 'channel_id')) -> channel_counts
+list(channel_counts, channel_classification, channel_classification_alt) %>%
+  purrr::reduce(~left_join(.x, .y, by = 'channel_id')) -> channel_leanings
 
 # bring in channel information
 read_csv(here(indir, params$analysis_dir, 'channel_info.csv'), na = c("", "NA", -1)) %>%
   mutate(categories = sapply(categories, format_python_lists)) -> channel_info
 
 # join channel info into the counts
-counts_w_info <- left_join(channel_counts, channel_info, by = 'channel_id')
+#class_full <- left_join(channel_counts, channel_info, by = 'channel_id')
 
 ```
 
-# Overview
+# Summaries
 
-Let's first take a look at the breakdown of each classification. The first ("base") classification has `r nrow(channel_classification)` channels, and the second ("alt") has `r nrow(channel_classification_alt)`. Note there is still some ambiguity around how the alternative classification was constructed, and how many trustworthy classifications we actually have. 
-
-```{r}
-class_full %>%
-  count(classification, leaning) %>%
-  ggplot(aes(leaning, n, fill = leaning)) +
-  geom_col() +
-  facet_wrap(~classification) +
-  scale_fill_manual(values = c("blue", "purple", "red"))
-  
-```
-
-# Matching to the Crawls
-
-While the raw number of channels we are classifying is good to know, it seems more important how many channels we are classifying that we actually visit in the course of running our crawls. In this section we match the channel classifications with our crawl information and take a look at how many of our videos we are able to assign a leaning score to. First we look at what proportion of channels we visit we can classify.
+First a summary table: how many R/L/C/missing channels do we have that we match to channels we visited?
 
 ```{r summ_tbl}
-counts_w_info %>%
+channel_leanings %>%
   select(channel_id, starts_with("leaning")) %>%
   gather(classification, leaning, -channel_id) %>%
   mutate(leaning = ifelse(is.na(leaning), 'unclassified', leaning)) %>%
+         #leaning = factor(leaning, levels = c("R", "C", "L", "unclassified"))) %>%
   count(classification, leaning) %>%
   mutate(classification = ifelse(classification == "leaning", "base", "alt")) %>%
   group_by(classification) %>%
@@ -174,17 +145,17 @@ summ_tbl %>%
   ggtitle('Channel Classification Share') 
 ```
 
-Now we weigh each channel by the number of times we visited it in our crawls. Somewhat surprisingly the alternative classification does not improve with this metric.
+What if we take into account the number of videos we have from each? R/L/C/missing weighted by number of videos from each channel.
 
 ```{r}
-counts_w_info %>%
-  select(channel_id, starts_with("leaning"), n_visits) %>%
+channel_leanings %>%
+  select(channel_id, starts_with("leaning"), n) %>%
   pivot_longer(cols = starts_with("leaning"),
                names_to = "classification",
                values_to = "leaning") %>%
   mutate(leaning = ifelse(is.na(leaning), 'unclassified', leaning)) %>%
   group_by(classification, leaning) %>%
-  summarise(n = sum(n_visits, na.rm = TRUE)) %>%
+  summarise(n = sum(n, na.rm = TRUE)) %>%
   ungroup() %>%
   mutate(classification = ifelse(classification == "leaning", "base", "alt")) %>%
   group_by(classification) %>%
@@ -210,126 +181,9 @@ summ_tbl_alt %>%
 
 ```
 
-## Politics Channels
-
-Here we repeat the same analysis, but filtering down to politics-related channels. First: what sorts of channels are labelled as "Politics" by YouTube? Top 20 politics channels we visited in our crawls, ranked by number of subscribers:
-
-```{r}
-# display some of the top politics-related channels
-channel_info %>%
-  unnest(categories) %>%
-  filter(categories == "Politics") -> channel_info_politics
-
-channel_info_politics %>%
-  select(`Channel Name` = name, `N Subscribers` = n_subscribers) %>%
-  top_n(20, `N Subscribers`) %>%
-  arrange(-`N Subscribers`) %>%
-  mutate_at("N Subscribers", ~format(.x, big.mark=','))
-
-```
-
-We have `r format(nrow(channel_info_politics), big.mark=',')` channels in the "Politics" category. Now we look at what share of politics-related channels we are classifying. The big-picture messsage is that our base classification works better when we subset to political channels.
-
-```{r}
-# get the politics-related channels from the alternative and base classifications
-channel_classification_alt %>%
-  left_join(select(channel_class_alt_raw, channel_id, cat_id = channel_topic_ids),
-            by = 'channel_id') %>%
-  mutate(cat_id = sapply(cat_id, format_python_lists)) %>%
-  unnest(cat_id) %>%
-  distinct(channel_id, cat_id) %>%
-  left_join(topicid_crosswalk, by = c('cat_id'='id')) %>%
-  filter(label == "Politics") %>%
-  pull(channel_id) -> alt_politics_channels
-
-channel_classification %>%
-  left_join(select(channel_info, channel_id, categories), by = 'channel_id') %>%
-  unnest(categories) %>%
-  distinct(channel_id, leaning, categories) %>%
-  filter(categories == "Politics") %>%
-  pull(channel_id) -> base_politics_channels
-
-politics_channels_class <- c(alt_politics_channels, base_politics_channels)
-
-class_full %>%
-  filter(channel_id %in% politics_channels_class) %>%
-  count(classification, leaning) %>%
-  ggplot(aes(leaning, n, fill = leaning)) +
-  geom_col() +
-  facet_wrap(~classification) +
-  scale_fill_manual(values = c("blue", "purple", "red"))
-```
-
-
-```{r}
-# simple counts
-counts_w_info %>%
-  filter(channel_id %in% channel_info_politics$channel_id) %>%
-  select(channel_id, starts_with("leaning")) %>%
-  gather(classification, leaning, -channel_id) %>%
-  mutate(leaning = ifelse(is.na(leaning), 'unclassified', leaning)) %>%
-  count(classification, leaning) %>%
-  mutate(classification = ifelse(classification == "leaning", "base", "alt")) %>%
-  group_by(classification) %>%
-  mutate(share = n / sum(n)) %>%
-  pivot_wider(names_from = classification, 
-              values_from = c(n, share), 
-              values_fill = list(n = 0, share = 0)) -> summ_tbl_politics
-
-summ_tbl_politics %>%
-  mutate_at(c("share_base", "share_alt"), scales::percent)
-
-```
-
-```{r}
-summ_tbl_politics %>%
-  select(leaning, starts_with("share")) %>%
-  pivot_longer(-leaning, names_to = "classification", values_to = "share") %>%
-  ggplot() + 
-  geom_col(aes('', share, fill = leaning)) + 
-  scale_fill_manual(values = c("purple", "blue", "red", "gray")) +
-  facet_wrap(~classification) +
-  ggtitle('Channel Classification Share (Politics)') 
-```
-
-```{r}
-counts_w_info %>%
-  filter(channel_id %in% channel_info_politics$channel_id) %>%
-  select(channel_id, starts_with("leaning"), n_visits) %>%
-  pivot_longer(cols = starts_with("leaning"),
-               names_to = "classification",
-               values_to = "leaning") %>%
-  mutate(leaning = ifelse(is.na(leaning), 'unclassified', leaning)) %>%
-  group_by(classification, leaning) %>%
-  summarise(n = sum(n_visits, na.rm = TRUE)) %>%
-  ungroup() %>%
-  mutate(classification = ifelse(classification == "leaning", "base", "alt")) %>%
-  group_by(classification) %>%
-  mutate(share = n / sum(n)) %>%
-  pivot_wider(names_from = classification, 
-              values_from = c(n, share), 
-              values_fill = list(n = 0, share = 0)) -> summ_tbl_alt_politics
-
-summ_tbl_alt_politics %>%
-  mutate_at(c("share_base", "share_alt"), scales::percent)
-
-```
-
-```{r}
-summ_tbl_alt_politics %>%
-  select(leaning, starts_with("share")) %>%
-  pivot_longer(-leaning, names_to = "classification", values_to = "share")  %>%
-  ggplot() + 
-  geom_col(aes('', share, fill = leaning)) + 
-  scale_fill_manual(values = c("purple", "blue", "red", "gray")) + 
-  facet_wrap(~classification) + 
-  ggtitle('Channel Classification Share Weighted by Visit Count (Politics)') 
-
-```
-
 # Channel Classification Comparisons
 
-Do the two classifications line up? Here we are comparing the unmatched classification lists. Clearly there is very little overlap between our two classifications, and we don't have any contradictions (L/R, R/L, etc.)
+Do the two classifications line up? Here we are comparing the unmatched classification lists. Clearly there is very little overlap between our two classifications.
 
 ```{r}
 channel_classification %>%
@@ -343,172 +197,54 @@ channel_classification %>%
 
 ```
 
-Using channel characteristics pulled from the YouTube API we can look at what sorts of channels we are classifying. Note that the information for the base and alternative classifications were pulled at different dates (unsure which date the alternative was pulled on). Looks like the alternative classification is capturing smaller channels. This makes sense, given the "base" classification only classifies channels we visit in our crawls.
+What do the channels in each classification look like? Note that the information for the base and alternative classifications were pulled at different dates (unsure which date the alternative was pulled on).
 
 ```{r}
-channel_classification %>%
-  mutate(classification = 'base') %>%
-  left_join(channel_info, by = 'channel_id') %>%
-  select(classification, n_subscribers, n_videos, leaning) %>%
-  bind_rows(channel_class_alt_raw %>%
-              mutate(classification = 'alt') %>%
-              select(classification, 
-                     n_subscribers = channel_subscribercount,
-                     n_videos = channel_videocount,
-                     leaning)) %>%
-  mutate(leaning = factor(leaning, levels = c("L", "C", "R"), ordered = TRUE)) %>%
-  pivot_longer(c(-classification, -leaning), names_to = "stat", values_to = "val") %>%
+channel_info %>%
+  left_join(channel_leanings, by = 'channel_id') %>%
+  select(n_subscribers, n_videos, n_views, leaning, leaning_alt) %>%
+  pivot_longer(cols = leaning:leaning_alt,
+               names_to = "classification",
+               values_to = "leaning") %>%
+  pivot_longer(cols = c(n_subscribers, n_videos, n_views),
+               names_to = "stat",
+               values_to = "val") %>%
+  mutate(leaning = ifelse(is.na(leaning), "unclassified", leaning),
+         leaning = factor(leaning, levels = c("L", "C", "R", "unclassified"), ordered = TRUE)) %>%
   ggplot(aes(val, fill = leaning, colour = leaning)) + 
-  geom_density(alpha=0.1) +
-  scale_fill_manual(values = c("blue", "purple", "red")) +
-  scale_color_manual(values = c("blue", "purple", "red")) + 
+  geom_density(alpha=0.08) +
+  scale_fill_manual(values = c("blue", "purple", "red", "black")) +
+  scale_color_manual(values = c("blue", "purple", "red", "black")) + 
   scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
                 labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-  facet_grid(stat ~ classification, scales = 'free')
+  facet_grid(classification ~ stat, scales = 'free')
 
 ```
 
 Let's take a look at the averages. 
 
 ```{r}
-channel_classification %>%
-  mutate(classification = 'base') %>%
-  left_join(channel_info, by = 'channel_id') %>%
-  select(classification, n_subscribers, n_videos, leaning) %>%
-  bind_rows(channel_class_alt_raw %>%
-              mutate(classification = 'alt') %>%
-              select(classification, 
-                     n_subscribers = channel_subscribercount,
-                     n_videos = channel_videocount,
-                     leaning)) %>%
-  mutate(leaning = factor(leaning, levels = c("L", "C", "R"), ordered = TRUE)) %>%
-  pivot_longer(c(-classification, -leaning), names_to = "stat", values_to = "val") %>%
+channel_info %>%
+  left_join(channel_leanings, by = 'channel_id') %>%
+  select(n_subscribers, n_videos, n_views, leaning, leaning_alt) %>%
+  pivot_longer(cols = leaning:leaning_alt,
+               names_to = "classification",
+               values_to = "leaning") %>%
+  pivot_longer(cols = c(n_subscribers, n_videos, n_views),
+               names_to = "stat",
+               values_to = "val") %>%
+  mutate(leaning = ifelse(is.na(leaning), "unclassified", leaning),
+         leaning = factor(leaning, levels = c("L", "C", "R", "unclassified"), ordered = TRUE)) %>%
   group_by(classification, leaning, stat) %>%
   summarise(val = mean(val, na.rm = TRUE)) %>%
+  ungroup() %>%
+  mutate_at("val", as.numeric) %>%
   ggplot(aes(leaning, val, fill = leaning)) + 
   geom_col() +
-  scale_fill_manual(values = c("blue", "purple", "red")) +
+  scale_fill_manual(values = c("blue", "purple", "red", "black")) +
   facet_grid(stat ~ classification, scales = "free") + 
   ylab("Average Value")
 
 ```
 
-
-# Channel Characteristics
-
-Let's take a look at the characteristics of our most-visited channels. Want to know: what do the most-visited channels look like? First: what's the correspondence between visits and number of views/subscribers/videos? Regression line plotted in blue. Unsurprisingly we're visiting more popular channels more often.
-
-```{r, eval=FALSE}
-counts_w_info %>%
-  select(channel_id, n_visits, n_subscribers, n_videos, n_views) %>%
-  gather(stat, val, -channel_id, -n_visits) %>%
-  ggplot(aes(n_visits, val)) +
-  geom_point() +
-  geom_smooth(method="lm") +
-  facet_wrap(~stat, ncol = 2, scales = "free") + 
-  scale_y_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
-                labels = scales::trans_format("log10", scales::math_format(10^.x))) + 
-  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
-                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-  xlab("log(Number of visits)") + 
-  ylab("log(statistic)")
-
-```
-
-Distribution of these statistics by leaning of the channel for the base classification:
-
-```{r}
-counts_w_info %>%
-  mutate(leaning = replace_na(leaning, "NA"),
-         leaning = factor(leaning, levels = c("L", "C", "R", "NA"), ordered = TRUE)) %>%
-  select(leaning, n_subscribers, n_videos, n_views) %>%
-  gather(stat, val, -leaning) %>%
-  ggplot(aes(val, fill = leaning, color = leaning)) + 
-  geom_density(alpha = 0.05) + 
-  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
-                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-  facet_wrap(~stat, scales = "free", ncol = 2) +
-  scale_fill_manual(values = c("blue", "purple", "red", "gray")) +
-  scale_color_manual(values = c("blue", "purple", "red", "black")) +
-  xlab("log(statistic)")
-  
-```
-
-The same figures for the alternative classification:
-
-```{r}
-counts_w_info %>%
-  mutate(leaning_alt = replace_na(leaning_alt, "NA"),
-         leaning_alt = factor(leaning_alt, levels = c("L", "R", "NA"), ordered = TRUE)) %>%
-  select(leaning_alt, n_subscribers, n_videos, n_views) %>%
-  gather(stat, val, -leaning_alt) %>%
-  ggplot(aes(val, fill = leaning_alt, color = leaning_alt)) + 
-  geom_density(alpha = 0.05) + 
-  scale_x_log10(breaks = scales::trans_breaks("log10", function(x) 10^x),
-                labels = scales::trans_format("log10", scales::math_format(10^.x))) +
-  facet_wrap(~stat, scales = "free", ncol = 2) +
-  scale_fill_manual(values = c("blue", "red", "gray")) +
-  scale_color_manual(values = c("blue", "red", "black")) +
-  xlab("log(statistic)")
-
-```
-
-Look at the averages for the base classification:
-
-```{r}
-counts_w_info %>%
-  mutate(leaning = replace_na(leaning, "NA"),
-         leaning = factor(leaning, levels = c("L", "C", "R", "NA"), ordered = TRUE)) %>%
-  select(leaning, n_subscribers, n_videos, n_views) %>%
-  gather(stat, val, -leaning) %>%
-  group_by(leaning, stat) %>%
-  summarise(val = mean(val, na.rm = TRUE)) %>%
-  ungroup() %>%
-  ggplot(aes(leaning, val, fill = leaning)) +
-  geom_col() +
-  scale_fill_manual(values = c("blue", "purple", "red", "gray")) +
-  facet_wrap(~stat, scales = "free")
-
-```
-
-And again for the alternative classification:
-
-```{r}
-counts_w_info %>%
-  mutate(leaning_alt = replace_na(leaning_alt, "NA"),
-         leaning_alt = factor(leaning_alt, levels = c("L", "R", "NA"), ordered = TRUE)) %>%
-  select(leaning_alt, n_subscribers, n_videos, n_views) %>%
-  gather(stat, val, -leaning_alt) %>%
-  group_by(leaning_alt, stat) %>%
-  summarise(val = mean(val, na.rm = TRUE)) %>%
-  ungroup() %>%
-  ggplot(aes(leaning_alt, val, fill = leaning_alt)) +
-  geom_col() +
-  scale_fill_manual(values = c("blue", "red", "gray")) +
-  facet_wrap(~stat, scales = "free")
-
-```
-
-
-```{r, eval=FALSE}
-class <- read_csv(here(indir, params$analysis_dir, 'channel_classification_alt.csv'))
-nrow(class)
-nrow(filter(class, !is.na(leaning)))
-nrow(filter(class, !is.na(pR_usr)))
-
-# we have 12 dupes
-class %>% 
-  select(channel_id, leaning) %>% 
-  group_by(channel_id) %>% 
-  summarise(n = n()) %>%
-  filter(n > 1) -> dupes
-
-# 10 of of the dupes have contradictory leaning values; we'll drop these
-class %>% 
-  select(channel_id, leaning) %>%
-  group_by(channel_id) %>%
-  summarise(all.equal = all(leaning == leaning[1])) %>%
-  filter(!all.equal) -> contradictions
-
-```
 
