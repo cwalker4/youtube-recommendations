@@ -54,7 +54,6 @@ class YoutubeFollower():
         searches_arr = [self.root_id, self.n_splits, self.depth, str(date.today()), 
                         self.sample, self.const_depth]
         self.search_id = db_utils.create_record(self.db, "searches", searches_arr)
-        self.db.commit()
 
         if self.driver == 'selenium':
             self.browser = webdriver.Firefox()
@@ -232,7 +231,7 @@ class YoutubeFollower():
                 recs.append(rec_id)
             except:
                 e = sys.exc_info()[0]
-                self.logger.warning("Error in getting recommendation: {}".format(e))
+                self.logger.debug("Error in getting recommendation: {}".format(e))
             if len(recs) == self.n_splits:
                 break
         return recs
