@@ -6,10 +6,10 @@ output:
     number_sections: no
 params:
   analysis_dir: 'analysis'
-  depth: 15
-  n_splits: 3
-  const_depth: 4
-  date: '2019-08-12'
+  depth: 20
+  n_splits: 4
+  const_depth: 5
+  date: 'NULL'
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE,
@@ -48,6 +48,8 @@ knitr::knit_hooks$set(inline = function(x) {
 library(texreg)
 
 source(here('scripts/analysis/utils.R'))
+
+con <- RSQLite::dbConnect(SQLite(), here('data/crawl.sqlite'))
 ```
 
 ---
@@ -67,23 +69,24 @@ tibble(parameter = c("Analysis Directory", "Max Depth", "Split Factor", "Samplin
 # data import + tidying
 ################################################################################
 
-indir <- 'data/derived_data'
-
 # raw video info
-read_csv(here::here(indir, params$analysis_dir, 'video_info.csv'), na = c("", -1)) %>%
-  mutate_at(vars(category, dislikes, likes, views, n_comments), as.integer) -> video_info
+video_info <- dbGetQuery(con, "SELECT * FROM videos")
+video_info <- mutate_at(video_info, vars(category, dislikes, likes, views, n_comments), as.integer)
 
-# category id <-> category name crosswalk
-category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
-
-# search info dataframe
-read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
-  mutate(search = stringr::str_replace_all(search, ' ', '_'),
-         recommendations = sapply(recommendations, format_python_lists, USE.NAMES = FALSE),
-         n_recs = map_dbl(recommendations, ~ifelse(anyNA(.x), 0, length(.x)))) -> search_info
+# recommendations data
+sql <- "
+select video_id, r.search_id, recommendation, r.depth, s.date,
+       count(recommendation) OVER (
+         PARTITION BY video_id, r.search_id
+         ) n_recs
+FROM recommendations r
+LEFT JOIN searches s
+  ON r.search_id=s.search_id
+"
+recs <- dbGetQuery(con, sql)
 
 if (!is.null(params$date)) {
-  search_info <- filter(search_info, scrape_date == params$date)
+  recs <- filter(recs, scrape_date == params$date)
 }
   
 ```
@@ -94,15 +97,16 @@ Let's take a look at the number of videos at each depth, averaged across all our
 expected_nvids <- function(depth, n_splits, const_depth) {
   ex <- rep(n_splits^const_depth, depth+1)
   for (i in 1:const_depth) {
-    ex[i] <- n_splits^(i-1)
+    ex[i] <- n_splits^(i)
   }
   return(ex)
 }
 
 expected_n <- expected_nvids(params$depth, params$n_splits, params$const_depth)
 
-search_info %>%
-  group_by(search, depth) %>%
+recs %>%
+  mutate(depth = depth + 1) %>%
+  group_by(search_id, depth) %>%
   tally() %>%
   ungroup() %>%
   group_by(depth) %>%
@@ -120,23 +124,23 @@ n_vids_by_depth %>%
 This is not necessarily because our recommendation scraper isn't working - we don't follow a recommendation if we've seen it before. Taking a look at number of recommendations we're getting, it appears that this is the case. 
 
 ```{r}
-search_info %>%
+recs %>%
   filter(depth < params$const_depth) %>%
   count(n_recs) %>%
   mutate(freq = n / sum(n),
          n_recs = factor(n_recs, levels = c(0:3))) %>%
   ggplot(aes(n_recs, freq)) + 
   geom_col() +
-  scale_x_discrete(breaks=c(0:3), drop = FALSE)
+  scale_x_discrete(breaks=c(0:4), drop = FALSE)
 
 ```
 
-How about after sampling? Looks like things are lining up as expected. 
+How about after sampling? Looks like things are lining up as expected.
 
 ```{r}
 ex_freq <- dbinom(c(0:params$n_splits), size=params$n_splits, prob=1/params$n_splits)
-search_info %>%
-  mutate(n_recs = factor(n_recs, levels = c(0:3))) %>%
+recs %>%
+  mutate(n_recs = factor(n_recs, levels = c(0:4))) %>%
   filter(depth >= params$const_depth) %>%
   count(n_recs, .drop = FALSE) %>%
   mutate(freq = n / sum(n),
@@ -153,7 +157,7 @@ search_info %>%
 A possibly more informative plot: average number of recommendations by depth. Recall that, since we are sampling after depth `r params$const_depth`, we want to be following one recommendation on average after that. Things look pretty good.
 
 ```{r}
-search_info %>%
+recs %>%
   mutate(sampling = depth >= params$const_depth) %>%
   group_by(depth, sampling) %>%
   summarise_at("n_recs", mean) %>%
@@ -166,13 +170,12 @@ search_info %>%
 How many of our trees are even making it to the max depth?
 
 ```{r}
-search_info %>%
-  distinct(root_video, depth) %>%
+recs %>%
+  distinct(search_id, depth) %>%
   count(depth) %>%
   mutate(p = n / n[which.min(depth)]) %>%
   ggplot(aes(depth, p)) +
   geom_line() +
-  scale_x_continuous(breaks=c(0:15)) + 
   ylim(c(0,1)) + 
   ylab('Empirical survival probability')
 
