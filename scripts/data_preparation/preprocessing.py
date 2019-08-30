@@ -4,6 +4,7 @@ import os
 from datetime import date
 import time
 import sys
+import subprocess
 
 import pandas as pd
 import numpy as np
@@ -78,3 +79,7 @@ pr_df = pd.DataFrame.from_dict(pr, orient="index").reset_index()\
                  .rename(index=str, columns={'index': 'video_id', 0: 'pagerank'})
     
 pr_df.to_csv(os.path.join(outdir, 'video_pageranks.csv'), index=False)
+
+print("Running the channel classification R script...")
+subprocess.call(["Rscript", "classify_channel_leanings.R"])
+
