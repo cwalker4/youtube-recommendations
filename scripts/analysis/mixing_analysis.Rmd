@@ -60,40 +60,53 @@ In this document we take a stab at looking at analyzing our data from a mixing p
 # data import + tidying
 ################################################################################
 
-indir <- 'data/derived_data'
+# set up database connection
+con = dbConnect(SQLite(), here('data/crawl.sqlite'))
 
-# raw video info
-read_csv(here::here(indir, params$analysis_dir, 'video_info.csv'), na = c("", -1)) %>%
-  mutate_at(vars(category, dislikes, likes, views, n_comments), as.integer) -> video_info
+# video info with category name and degrees joined in
+sql <- "
+WITH 
+video_degrees AS (
+  SELECT recommendation AS video_id, COUNT(video_id) AS in_degree
+  FROM recommendations
+  GROUP BY recommendation
+),
+video_depths AS (
+  SELECT DISTINCT video_id, search_id, depth
+  FROM recommendations
+)
+SELECT 
+v.video_id, v.search_id, channel_id, title, postdate, views, likes, dislikes, n_comments, in_degree,
+c.category_name AS category, depth
+  FROM videos v
+LEFT JOIN video_degrees d
+  ON v.video_id=d.video_id
+LEFT JOIN video_categories c
+  ON v.category=c.category_id
+LEFT JOIN video_depths vd
+  ON v.video_id=vd.video_id
+  AND v.search_id=vd.search_id"
+video_info <- dbGetQuery(con, sql)
+video_info$p_like <- video_info$likes / (video_info$likes + video_info$dislikes)
+video_info$postdate <- as.Date(video_info$postdate)
 
-# category id <-> category name crosswalk
-category_crosswalk <- read_csv(here::here(indir, 'category_crosswalk.csv'))
+numeric_cols <- c('views', 'likes', 'dislikes', 'n_comments', 'in_degree', 'p_like')
+video_info <- mutate_at(video_info, vars(numeric_cols), as.numeric)
 
-# search info dataframe
-read_csv(here::here(indir, params$analysis_dir, 'search_info.csv'), na = c("", -1)) %>%
-  select(-recommendations) %>%
-  mutate(search = stringr::str_replace_all(search, ' ', '_')) -> search_info
-
-# add a variable for percent of likes
-video_info %>%
-  mutate(p_like = likes / (likes + dislikes)) -> video_info
+# recommendations dataframe 
+rec_info <- dbReadTable(con, 'recommendations')
 
 # import the channel-leaning information
-readr::read_csv(here::here(indir, params$analysis_dir, 'channel_classification.csv')) %>%
-  filter(!is.na(channel_id)) -> channel_classification
+channel_leanings <- dbGetQuery(con, "SELECT * FROM channel_leanings")
 
-# join together search and leaning information
-search_info %>%
-  left_join(video_info, by = 'video_id') %>%
-  left_join(channel_classification, by = 'channel_id') %>%
-  select(depth, root_video, video_id, channel_id, leaning) %>%
-  mutate(leaning = factor(leaning, levels = c("L", "C", "R")))-> search_w_leanings
-
-# add columns for the leaning of the root node
-search_w_leanings %>%
-  group_by(root_video) %>%
-  mutate(root_leaning = leaning[which.min(depth)]) %>%
-  ungroup() -> search_w_leanings
+# merge together and add column for root leaning
+video_info %>%
+  left_join(channel_leanings, by = 'channel_id') %>%
+  select(video_id, search_id, depth, channel_id, leaning) %>%
+  group_by(search_id) %>%
+  mutate(root_leaning = leaning[which.min(depth)],
+         leaning = factor(leaning, levels = c("L", "C", "R"), ordered = TRUE)) %>%
+  ungroup() -> search_leanings
 
 ```
 
@@ -106,7 +119,7 @@ $$
 where $P_i(x)$ is the distribution of variable $x$ at depth $i$ of the tree. Let's do this first with political leaning. We have the following proportions of L/C/R leaning videos by depth:
 
 ```{r}
-search_w_leanings %>%
+search_leanings %>%
   filter(!is.na(leaning)) %>%
   group_by(depth, leaning) %>%
   summarise(n = n()) %>%
@@ -117,10 +130,10 @@ search_w_leanings %>%
 
 ```
 
-There's not a ton of movement, and this figure doesn't really support the assumption that we reach the stationary distribution after depth 10, but let's continue for now. Let's take the last 5 levels and use those to construct $Q(x)$.
+There's not a ton of movement, and this figure doesn't really support the assumption that we reach the stationary distribution after depth 10, but let's continue for now. Let's take the last 10 levels and use those to construct $Q(x)$.
 
 ```{r}
-search_w_leanings %>%
+search_leanings %>%
   filter(!is.na(leaning),
          depth >= 10) %>%
   count(leaning) %>%
@@ -130,7 +143,6 @@ q_x
 
 Cool. Now let's calculate the KL divergence between this distribution and the distribution of leanings for each depth of our crawls.
 
-
 ```{r}
 # F'n to get the divergence between categorical dists p and q. No safety checks.
 kl_divergence <- function(p, q) {
@@ -138,7 +150,7 @@ kl_divergence <- function(p, q) {
 }
 
 # get the distributions for each depth
-search_w_leanings %>%
+search_leanings %>%
   filter(!is.na(leaning)) %>%
   count(depth, leaning) %>%
   group_by(depth) %>%
@@ -153,7 +165,6 @@ select(p_by_depth, depth, divergence)
 
 ```
 
-Not sure what's going on at depth 0, but generally a downward trend? 
 
 ```{r}
 p_by_depth %>%
@@ -165,7 +176,7 @@ p_by_depth %>%
 What happens if we break this up by leaning of the root node? Recall this figure, where it appears that the left-leaning videos converge faster to the stationary distribution than right-leaning videos.
 
 ```{r}
-search_w_leanings %>%
+search_leanings %>%
   filter(!is.na(leaning), !is.na(root_leaning)) %>%
   count(root_leaning, depth, leaning) %>%
   group_by(root_leaning, depth) %>%
@@ -181,7 +192,7 @@ Let's take a closer look at what's going on with the KL divergence.
 
 ```{r}
 # get the distributions for each depth
-search_w_leanings %>%
+search_leanings %>%
   filter(!is.na(leaning), !is.na(root_leaning)) %>%
   count(root_leaning, depth, leaning) %>%
   group_by(root_leaning, depth) %>%
