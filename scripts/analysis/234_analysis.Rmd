@@ -402,7 +402,7 @@ leaning_by_depth %>%
 
 ```{r}
 search_leanings %>%
-  group_by(search) %>%
+  group_by(search_id) %>%
   mutate(seed_leaning = leaning[which.min(depth)]) %>%
   ungroup() %>%
   filter(seed_leaning %in% c('L', 'R'),
@@ -434,12 +434,12 @@ Isolation index? Count the relative frequency of different leanings (a root vide
 # by a single user. The user's political leaning is defined as the leaning of the very first (root) video
 # in the tree.
 search_leanings %>%
-  group_by(search) %>%
+  group_by(search_id) %>%
   mutate(seed_leaning = leaning[which.min(depth)]) %>%
   ungroup() %>%
   filter(seed_leaning %in% c('L', 'R')) %>%
   mutate(seed_leaning = factor(seed_leaning, levels=c('L', 'R'))) %>%
-  count(channel_name, seed_leaning, .drop = FALSE) -> leaning_visit_counts
+  count(channel_id, seed_leaning, .drop = FALSE) -> leaning_visit_counts
 
 # get the conservative and liberal shares for each channel
 leaning_visit_counts %>%
@@ -450,7 +450,7 @@ leaning_visit_counts %>%
 
 # get the total number of liberal/conservative seed videos.
 search_leanings %>%
-  group_by(search) %>%
+  group_by(search_id) %>%
   mutate(seed_leaning = leaning[which.min(depth)]) %>%
   ungroup() %>%
   count(seed_leaning) -> total_visits_by_leaning
@@ -471,17 +471,6 @@ isolation_index
 
 ```
 
-```{r}
-channel_leanings %>%
-  arrange(channel_name) %>%
-  kable(format = "latex",
-        caption = "Channels and Classifications",
-        booktabs = TRUE,
-        col.names = c("Channel", "Bias"),
-        digits = 2,
-        longtable = TRUE) %>%
-  kable_styling()
-```
 
 
 
