@@ -316,7 +316,7 @@ class YoutubeFollower():
             else:
                 recs = self.get_recommendations(current_video, depth)
             for video_id in recs:
-                if video_id in self.search_info:
+                if video_id in self.search_info or video_id in queue:
                     continue
                 inactive_queue.append(video_id)
 
