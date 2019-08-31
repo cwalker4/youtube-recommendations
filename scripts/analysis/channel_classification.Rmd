@@ -103,13 +103,6 @@ channel_info <- dbGetQuery(con, "SELECT * FROM channels")
 list(channel_counts, channel_classification, channel_classification_alt) %>%
   purrr::reduce(~left_join(.x, .y, by = 'channel_id')) -> channel_leanings
 
-# bring in channel information
-read_csv(here(indir, params$analysis_dir, 'channel_info.csv'), na = c("", "NA", -1)) %>%
-  mutate(categories = sapply(categories, format_python_lists)) -> channel_info
-
-# join channel info into the counts
-#class_full <- left_join(channel_counts, channel_info, by = 'channel_id')
-
 ```
 
 # Summaries
