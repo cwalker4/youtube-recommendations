@@ -224,7 +224,6 @@ class YoutubeFollower():
                 depth += 1
                 self.logger.debug("Tree at depth {}".format(depth))
             current_video = queue.pop(0)
-                continue
             recs = self.get_recommendations(current_video, depth)
             for video_id in recs:
                 # skip video_id if we've seen the recommendation before
