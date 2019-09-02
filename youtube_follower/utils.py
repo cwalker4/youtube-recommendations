@@ -3,9 +3,6 @@ import os
 from googleapiclient.discovery import build
 from googleapiclient.errors import HttpError
 
-from selenium.common.exceptions import NoSuchElementException
-
-
 KEY_LOC = os.path.join(os.path.dirname(__file__), '../credentials/api_key.txt')
 with open(KEY_LOC, 'r') as f:
 	DEVELOPER_KEY = f.read()
@@ -283,29 +280,5 @@ def dict_to_array(dictionary, order):
 		entry.extend([data[item] for item in order])
 		res.append(entry)
 	return res
-
-
-class element_does_not_exist(object):
-	"""
-	Selenium expectation for waiting until an object no longer exists
-
-	locator -- used to identify the element
-	"""
-	def __init__(self, locator):
-		self.locator = locator
-
-	def __call__(self, driver):
-		try:
-			element = driver.find_element(*self.locator)
-		except NoSuchElementException:
-			return True
-		return False
-
-
-
-
-
-
-
 
 

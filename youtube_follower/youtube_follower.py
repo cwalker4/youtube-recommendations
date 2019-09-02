@@ -11,13 +11,6 @@ from urllib.request import urlopen
 
 from bs4 import BeautifulSoup
 
-from selenium import webdriver
-from selenium.webdriver.common.keys import Keys
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import NoSuchElementException, TimeoutException
-from selenium.webdriver.support.ui import WebDriverWait
-
 from . import utils
 from .utils import element_does_not_exist
 from . import db_utils
@@ -25,7 +18,7 @@ from . import db_utils
 
 class YoutubeFollower():
     def __init__(self, root_id, n_splits=3, depth=5, verbose=1, const_depth=5,
-        sample=False, driver='html'):
+        sample=False):
         """
         INPUT:
             root_id: (str) YouTube video_id of the root video
@@ -35,7 +28,6 @@ class YoutubeFollower():
             const_depth: (int) depth at which to stop branching and sample uniformly
                                from recommendations (toggled w/ sample parameter)
             sample: (bool) whether to sample from recommendations after const_depth splits
-            driver: (str) one of "html" or "selenium"
         """
 
         self.root_id = root_id
@@ -54,9 +46,6 @@ class YoutubeFollower():
         searches_arr = [self.root_id, self.n_splits, self.depth, str(date.today()),
                         self.sample, self.const_depth]
         self.search_id = db_utils.create_record(self.db, "searches", searches_arr)
-
-        if self.driver == 'selenium':
-            self.browser = webdriver.Firefox()
 
         # set up logger
         log_opts = [logging.ERROR, logging.INFO, logging.DEBUG]
@@ -137,81 +126,6 @@ class YoutubeFollower():
             self.channel_info[channel_id] = channel_data
 
 
-    def parse_selenium(self):
-        """
-        Selenium only. Handles YouTube ads to imitate a human user.
-        """
-        rec_elems = self.browser.find_elements_by_xpath("//a[@class='yt-simple-endpoint style-scope ytd-compact-video-renderer']")
-        recs = []
-        for i in range(self.n_splits):
-            try:
-                video_id = rec_elems[i].get_attribute('href').split('?v=')[1]
-                recs.append(video_id)
-            except:
-                self.logger.warning("Malformed content, could not get recommendation")
-        return recs
-
-    def skip_ads(self):
-        """
-        Selenium only. Handles YouTube ads to imitate a human user
-
-        """
-        # check whether video is skippable; if so, wait until skip button appears and click it
-        try:
-            preskipbutton = self.browser.find_element_by_xpath("//div[contains(@id, 'preskip-component')]")
-            skipbutton = wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-ad-skip-button ytp-button']")))
-            skipbutton.click()
-            return
-        except NoSuchElementException:
-            pass
-        # if video has an unskippable ad wait for it to go away
-        try:
-            wait.until(element_does_not_exist((By.XPATH, "//span[@class='ytp-ad-preview-container']")))
-            return
-        # do nothing if there is no ad
-        except TimeoutException:
-            return
-
-    def get_recommendations_selenium(self, video_id, depth):
-        """
-        Scrapes the recommendations corresponding to video_id using Selenium
-        as the driver.
-
-        INPUT:
-            video_id: (str)
-            depth: (int) depth of search
-
-        OUTPUT:
-            recs: list of recommended video_ids
-        """
-        while True:
-            try:
-                self.browser.get(url)
-                break
-            except:
-                time.sleep(1)
-        # press play on the video if possible
-        wait = WebDriverWait(self.browser, 30)
-        try:
-            wait.until(EC.element_to_be_clickable((By.XPATH, "//button[@class='ytp-play-button ytp-button']"))).click()
-        except TimeoutException:
-            pass
-        #self.skip_ads()
-        time.sleep(10)  # watch some of the video
-        recs = self.parse_selenium()
-
-        # If we're (a) sampling, and (b) at our point of critical depth,
-        # hold onto recommendations uniformly at random
-        if all([self.sample == True, depth >= self.const_depth, len(recs) != 0]):
-            recs = np.array(recs, dtype=str)[np.random.rand(len(recs)) < 1/len(recs)]
-
-        self.search_info[video_id] = {'search_id': self.search_id,
-                                      'recommendations': list(recs),
-                                      'depth': depth}
-        self.logger.debug("Recommendations for video {}: {}".format(video_id, recs))
-        return recs
-
-
     def parse_soup(self, soup):
         """
         HTML only. Helper function for get_recommendations.
@@ -239,8 +153,7 @@ class YoutubeFollower():
 
     def get_recommendations(self, video_id, depth):
         """
-        Scrapes the recommendations corresponding to video_id. Split
-        into Selenium and HTML sections.
+        Scrapes the recommendations corresponding to video_id.
 
         INPUT:
             video_id: (str)
@@ -311,11 +224,10 @@ class YoutubeFollower():
                 depth += 1
                 self.logger.debug("Tree at depth {}".format(depth))
             current_video = queue.pop(0)
-            if self.driver == 'selenium':
-                recs = self.get_recommendations_selenium(current_video, depth)
-            else:
-                recs = self.get_recommendations(current_video, depth)
+                continue
+            recs = self.get_recommendations(current_video, depth)
             for video_id in recs:
+                # skip video_id if we've seen the recommendation before
                 if video_id in self.search_info or video_id in queue:
                     continue
                 inactive_queue.append(video_id)
@@ -339,8 +251,6 @@ class YoutubeFollower():
         # start running
         self.logger.info("Starting crawl from root video {}".format(self.root_id))
         self.get_recommendation_tree()
-        if self.driver == 'selenium':
-            self.browser.close()
         self.populate_info()
         self.save_results()
 
