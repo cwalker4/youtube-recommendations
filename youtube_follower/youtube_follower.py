@@ -306,7 +306,7 @@ class YoutubeFollower():
             if not queue and not inactive_queue:
                 return
             if not queue:
-                queue = inactive_queue
+                queue = list(set(inactive_queue))
                 inactive_queue = []
                 depth += 1
                 self.logger.debug("Tree at depth {}".format(depth))
