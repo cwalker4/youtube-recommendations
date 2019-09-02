@@ -9,7 +9,7 @@ params:
   depth: 20
   n_splits: 4
   const_depth: 5
-  date: 'NULL'
+  date: '2019-08-31'
 ---
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE,
@@ -76,7 +76,7 @@ video_info <- mutate_at(video_info, vars(category, dislikes, likes, views, n_com
 # recommendations data
 sql <- "
 select video_id, r.search_id, recommendation, r.depth, s.date,
-       count(recommendation) OVER (
+       COUNT(recommendation) OVER (
          PARTITION BY video_id, r.search_id
          ) n_recs
 FROM recommendations r
@@ -86,7 +86,7 @@ LEFT JOIN searches s
 recs <- dbGetQuery(con, sql)
 
 if (!is.null(params$date)) {
-  recs <- filter(recs, scrape_date == params$date)
+  recs <- filter(recs, date == params$date)
 }
   
 ```
@@ -95,7 +95,7 @@ Let's take a look at the number of videos at each depth, averaged across all our
 
 ```{r vids_per_depth}
 expected_nvids <- function(depth, n_splits, const_depth) {
-  ex <- rep(n_splits^const_depth, depth+1)
+  ex <- rep(n_splits^const_depth, depth)
   for (i in 1:const_depth) {
     ex[i] <- n_splits^(i)
   }
@@ -105,6 +105,7 @@ expected_nvids <- function(depth, n_splits, const_depth) {
 expected_n <- expected_nvids(params$depth, params$n_splits, params$const_depth)
 
 recs %>%
+  filter(!is.na(recommendation)) %>%
   mutate(depth = depth + 1) %>%
   group_by(search_id, depth) %>%
   tally() %>%
@@ -126,7 +127,8 @@ This is not necessarily because our recommendation scraper isn't working - we do
 ```{r}
 recs %>%
   filter(depth < params$const_depth) %>%
-  count(n_recs) %>%
+  distinct(video_id, n_recs) %>%
+  count(n_recs, .drop = FALSE) %>%
   mutate(freq = n / sum(n),
          n_recs = factor(n_recs, levels = c(0:3))) %>%
   ggplot(aes(n_recs, freq)) + 
@@ -135,16 +137,18 @@ recs %>%
 
 ```
 
-How about after sampling? Looks like things are lining up as expected.
+How about after sampling? Looks like things are lining up as expected. 
 
 ```{r}
 ex_freq <- dbinom(c(0:params$n_splits), size=params$n_splits, prob=1/params$n_splits)
 recs %>%
-  mutate(n_recs = factor(n_recs, levels = c(0:4))) %>%
   filter(depth >= params$const_depth) %>%
+  distinct(video_id, n_recs) %>%
   count(n_recs, .drop = FALSE) %>%
   mutate(freq = n / sum(n),
-         ex_freq = ex_freq) %>%
+         ex_freq = ex_freq) -> freqs
+
+freqs %>%
   select(-n) %>%
   gather(stat, val, -n_recs) %>%
   ggplot(aes(n_recs, val, fill = stat)) + 
@@ -152,12 +156,16 @@ recs %>%
   ylab("Frequency") +
   xlab("Number of recommendations")
 
+tstat <- sum((freqs$freq - freqs$ex_freq)^2 / freqs$ex_freq)
+pval <- pchisq(tstat, df = nrow(freqs) - 1, lower.tail = FALSE)
+
 ```
 
-A possibly more informative plot: average number of recommendations by depth. Recall that, since we are sampling after depth `r params$const_depth`, we want to be following one recommendation on average after that. Things look pretty good.
+Formalizing this with a chi-squared test comparing the expected and empirical distributions we get $\chi^2_4=$ `r tstat` and associated p-value of `r pval`.  A possibly more informative plot: average number of recommendations by depth. Recall that, since we are sampling after depth `r params$const_depth`, we want to be following one recommendation on average after that. Things look pretty good.
 
 ```{r}
 recs %>%
+  distinct(video_id, depth, n_recs) %>%
   mutate(sampling = depth >= params$const_depth) %>%
   group_by(depth, sampling) %>%
   summarise_at("n_recs", mean) %>%
