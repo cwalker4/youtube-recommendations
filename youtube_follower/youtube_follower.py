@@ -12,7 +12,6 @@ from urllib.request import urlopen
 from bs4 import BeautifulSoup
 
 from . import utils
-from .utils import element_does_not_exist
 from . import db_utils
 
 
@@ -38,7 +37,6 @@ class YoutubeFollower():
         self.depth = depth
         self.const_depth = const_depth
         self.sample = sample
-        self.driver = driver
         self.verbose = verbose
         self.db = db_utils.create_connection('data/crawl.sqlite')
 
