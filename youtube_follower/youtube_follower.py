@@ -17,7 +17,7 @@ from . import db_utils
 
 class YoutubeFollower():
     def __init__(self, root_id, n_splits=3, depth=5, verbose=1, const_depth=5,
-        sample=False):
+        sample=False, db_path='data/crawl.sqlite'):
         """
         INPUT:
             root_id: (str) YouTube video_id of the root video
@@ -27,6 +27,7 @@ class YoutubeFollower():
             const_depth: (int) depth at which to stop branching and sample uniformly
                                from recommendations (toggled w/ sample parameter)
             sample: (bool) whether to sample from recommendations after const_depth splits
+            db_path: (str) where the sqlite database lives
         """
 
         self.root_id = root_id
@@ -38,7 +39,7 @@ class YoutubeFollower():
         self.const_depth = const_depth
         self.sample = sample
         self.verbose = verbose
-        self.db = db_utils.create_connection('data/crawl.sqlite')
+        self.db = db_utils.create_connection(db_path)
 
         # write search info to the database and get the serialized search_id
         searches_arr = [self.root_id, self.n_splits, self.depth, str(date.today()),
