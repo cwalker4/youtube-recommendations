@@ -238,6 +238,8 @@ class YoutubeFollower():
             return
 
         # set up logger to save to the log folder
+        if not os.path.isdir('logs'):
+            os.mkdir('logs')
         fh = logging.FileHandler(os.path.join('logs',
             '{}_{}.log'.format(self.root_id, str(date.today()))))
         fh.setLevel(logging.DEBUG)
