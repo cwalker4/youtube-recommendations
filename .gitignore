@@ -108,12 +108,19 @@ credentials/
 .Rproj.user
 .Rhistory
 
-# scrape results
-data/scrape_results*
+# data
+data/*
+*.sqlite
+
+# logs
+logs
 
 # system stuff
 .DS_Store
 
 # misc
 meeting_notes.md
-*.sqlite
+
+# shell scripts
+*.sh
+repeat_search.py
