@@ -1,11 +1,7 @@
 import sqlite3
 import pandas as pd
 import numpy as np
-import time
-
-from collections import Counter
 	
-
 def complete_tree_setup(df):
 	"""
 	`complete_tree`-specific helper. Sets up deep copy of df + dicts of
@@ -65,9 +61,6 @@ def complete_tree(df, search_id, n_splits=4, max_depth=20, const_depth=5):
 	v_id = max(res.vertex_id.values)
 	prev_recs = []
 	for depth in range(max_depth + 1):
-		n_sampled = []
-		n_unsampled = []
-		tic = time.time()
 		parent_ids = list((res
 					 .query('depth == @depth')
 					 .video_id
@@ -100,8 +93,6 @@ def complete_tree(df, search_id, n_splits=4, max_depth=20, const_depth=5):
 			.query('depth == @depth')
 			.recommendation
 			.values)
-		toc = time.time()
-		print("Time for depth {}: {}".format(depth, (toc-tic)))
 
 	res = res.assign(search_id=search_id).sort_values(['depth', 'video_id'])
 	return res
@@ -111,26 +102,21 @@ if __name__ == "__main__":
 	con = sqlite3.connect('../../data/crawl.sqlite')
 	cur = con.cursor()
 
-	sql = '''
-	SELECT r.* FROM recommendations r
-	LEFT JOIN searches s
-	  ON r.search_id=s.search_id
-	'''
+	sql = "SELECT * FROM recommendations r"
 
 	recs = pd.read_sql_query(sql, con)
 	for search_id in recs.search_id.unique():
+		search_id = 1
 		df = recs.query("search_id == @search_id")
-
-		# get search parameters
+		
 		sql = '''
 		SELECT * FROM searches
-		WHERE search_id = ?
-		'''
-		_, _, n_splits, _, _, _, const_depth = cur.execute(sql, (search_id,)).fetchone()
+		WHERE search_id = {}
+		'''.format(search_id)
 
-		# complete the tree and add to database
-		res = complete_tree(df, search_id, n_splits=n_splits, const_depth=const_depth)
-		pd.to_sql('recommendations_full', con, if_exists='append')
+		_, _, n_splits, depth, _, _, const_depth = cur.execute(sql).fetchone()
+		res = complete_tree(df, search_id, n_splits=n_splits, max_depth=depth, const_depth=const_depth)
+		res.to_sql('recommendations_full', con, if_exists='append', index=False)
 
 	con.commit()
 	con.close()
