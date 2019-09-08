@@ -9,7 +9,8 @@ def credentials():
 	"""
 	Set up credentials folder and empty api key text file
 	"""
-	os.mkdir('credentials')
+	if not os.path.exists('credentials'):
+		os.mkdir('credentials')
 	open('credentials/api_key.txt', 'w').close()
 
 
@@ -32,7 +33,8 @@ def database():
 	set up the data directory
 
 	"""
-	os.mkdir('data')
+	if not os.path.exists('data'):
+		os.mkdir('data')
 	try:
 		con = sqlite3.connect('data/crawl.sqlite')
 	except Error as e:
