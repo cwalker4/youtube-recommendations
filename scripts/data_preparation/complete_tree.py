@@ -4,28 +4,6 @@ import numpy as np
 import time
 
 from collections import Counter
-
-
-def collapse_multiples(l, factor):
-	'''
-	Collapses `factor` duplicates of element in list into a single element.
-	e.g. if l = [1,1,2,3,3,3,3] then collapse_multiples(l, 2) returns [1,2,3,3]
-	
-	INPUT:
-		l: list
-		factor: (int) collapse factor
-	
-	OUTPUT:
-		collapsed list
-	
-	'''
-	Counter(l)
-	res = []
-	for elem, n in Counter(l).items():
-		if n % factor == 0:
-			n /= factor
-		res.extend([elem] * int(n))
-	return res
 	
 
 def complete_tree_setup(df):
@@ -57,7 +35,7 @@ def complete_tree_setup(df):
 			   .agg(lambda x: list(x))
 			   .recommendation
 			   .to_dict())
-	return res, depth, recs
+	return res, depths, recs
 
 def list_difference(l1, l2):
 	"""
@@ -66,23 +44,9 @@ def list_difference(l1, l2):
 	
 	"""
 	return [i for i in l1 if not i in l2 or l2.remove(i)]
-
-def sample_list(l, p):
-	"""
-	Returns elements independently with probability p
-	
-	INPUT:
-		l: list to sample
-		p: probability of keeping each element
-	
-	OUTPUT:
-		sampled list
-	"""
-	inds = np.random.rand(len(l)) < 1/p
-	return list(np.array(l)[inds])
 	
 
-def complete_tree(df, search_id, n_splits=4, const_depth=5):
+def complete_tree(df, search_id, n_splits=4, max_depth=20, const_depth=5):
 	"""
 	Function which fills in a truncated tree.
 	
@@ -90,7 +54,7 @@ def complete_tree(df, search_id, n_splits=4, const_depth=5):
 		df: pd.DataFrame with out-edges (columns=['video_id', 'depth', 'recommendation'])
 		search_id: (int) id of the tree to populate
 		n_splits: (int) splitting factor
-		const_depth: (int) depth at which out-edges are sampled w.p. 1/n_splits
+		const_depth: (int) depth at which out-edges are sampled
 	
 	OUTPUT:
 		(pd.DataFrame) full tree
@@ -100,7 +64,10 @@ def complete_tree(df, search_id, n_splits=4, const_depth=5):
 	# get starting vertex index for new additions
 	v_id = max(res.vertex_id.values)
 	prev_recs = []
-	for depth in df.depth.unique():
+	for depth in range(max_depth + 1):
+		n_sampled = []
+		n_unsampled = []
+		tic = time.time()
 		parent_ids = list((res
 					 .query('depth == @depth')
 					 .video_id
@@ -115,26 +82,29 @@ def complete_tree(df, search_id, n_splits=4, const_depth=5):
 		
 			recs = vid_recs[video_id]
 			source_depth = vid_depths[video_id]
-			if depth >= const_depth:
-				n_followed.append(len(recs))
 			
 			# sample if we  are sampling, but our source recommendations were not sampled
 			if depth >= const_depth and source_depth < const_depth:
-				recs = sample_list(recs, p=1/len(recs))
-			
-			to_append = pd.DataFrame([[video_id, depth, v_id, rec] for rec in recs],
+				recs = np.random.choice(recs, 1)
+				
+			if not recs:
+				to_append_l = [[video_id, depth, v_id, None]]
+			else:
+				to_append_l = [[video_id, depth, v_id, rec] for rec in recs]
+			to_append = pd.DataFrame(to_append_l,
 									columns=['video_id','depth','vertex_id','recommendation'])
 			res = res.append(to_append)
-		
+			
 		# update previous recs 
 		prev_recs = list(res
 			.query('depth == @depth')
 			.recommendation
 			.values)
+		toc = time.time()
+		print("Time for depth {}: {}".format(depth, (toc-tic)))
 
 	res = res.assign(search_id=search_id).sort_values(['depth', 'video_id'])
 	return res
-
 
 
 if __name__ == "__main__":
@@ -145,8 +115,6 @@ if __name__ == "__main__":
 	SELECT r.* FROM recommendations r
 	LEFT JOIN searches s
 	  ON r.search_id=s.search_id
-	WHERE s.date = '2019-08-31'
-		AND video_id NOT NULL
 	'''
 
 	recs = pd.read_sql_query(sql, con)
@@ -161,7 +129,7 @@ if __name__ == "__main__":
 		_, _, n_splits, _, _, _, const_depth = cur.execute(sql, (search_id,)).fetchone()
 
 		# complete the tree and add to database
-		res = complete_tree(df, search_id, n_splits=4, const_depth=5)
+		res = complete_tree(df, search_id, n_splits=n_splits, const_depth=const_depth)
 		pd.to_sql('recommendations_full', con, if_exists='append')
 
 	con.commit()
